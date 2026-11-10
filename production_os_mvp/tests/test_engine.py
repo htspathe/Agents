@@ -87,6 +87,66 @@ class ProductionTests(unittest.TestCase):
         data = json.loads((folder / "kdp_metadata_draft.json").read_text())
         self.assertEqual(data["amazon_submission"], "NOT_READY")
 
+    def test_piper_extracts_spoken_voiceover_section(self):
+        source = (
+            "# Script\n\n## Accroche\nUne question.\n\n"
+            "## Voix off intégrale (à lire mot pour mot)\n"
+            "Aujourd'hui, **nous expliquons** les intérêts composés.\n\n"
+            "## Sources\nNe pas lire cette partie.\n"
+        )
+        self.assertEqual(
+            piper_tts.extract_voiceover(source),
+            "Aujourd'hui, nous expliquons les intérêts composés."
+        )
+
+    def test_piper_creates_clear_blocker_when_runtime_is_missing(self):
+        folder = Path(engine.ROOT) / "outputs" / "piper-blocker"
+        folder.mkdir(parents=True)
+        (folder / "content.md").write_text(
+            "## Voix off intégrale\nBienvenue sur Brain to Billions. Voici notre sujet.\n",
+            encoding="utf-8"
+        )
+        with mock.patch.object(piper_tts, "get_settings", return_value={"voice": "fr_FR-siwis-medium"}), \
+             mock.patch.object(piper_tts, "get_status", return_value={
+                 "ready": False, "note": "Piper absent"
+             }):
+            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60})
+        self.assertFalse(result["ready"])
+        self.assertTrue((folder / "narration.md").is_file())
+        self.assertTrue((folder / "narration_blocker.md").is_file())
+        self.assertFalse((folder / "narration.wav").exists())
+
+    def test_piper_generates_and_stages_same_voice_wav(self):
+        folder = Path(engine.ROOT) / "outputs" / "piper-ready"
+        project = folder / "stickman_project"
+        project.mkdir(parents=True)
+        (folder / "content.md").write_text(
+            "## Voix off intégrale\nBienvenue sur Brain to Billions. Nous parlons de création de richesse.\n",
+            encoding="utf-8"
+        )
+        settings = {"voice": "fr_FR-siwis-medium", "sentence_silence": 0.18}
+        status = {"ready": True, "python_path": "python.exe", "voice_dir": "C:/voices"}
+        def fake_synthesis(text, output_path, selected):
+            with wave.open(str(output_path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(22050)
+                audio.writeframes(b"\\x00\\x00" * 22050)
+            return {"file": "narration.wav", "duration_seconds": 1.0, "sample_rate": 22050,
+                    "size_bytes": output_path.stat().st_size, "voice": selected["voice"]}
+        with mock.patch.object(piper_tts, "get_settings", return_value=settings), \
+             mock.patch.object(piper_tts, "get_status", return_value=status), \
+             mock.patch.object(piper_tts, "synthesize_to_wav", side_effect=fake_synthesis):
+            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60})
+        staged = project / "assets" / "audio" / "narration.wav"
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["voice"], "fr_FR-siwis-medium")
+        self.assertTrue((folder / "narration.wav").is_file())
+        self.assertTrue(staged.is_file())
+        self.assertTrue((folder / "voice_attribution.md").is_file())
+        metadata = json.loads((folder / "narration_metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["voice_license"], "CC BY 4.0")
+
     def test_youtube_storyboard(self):
         task = self.launch("youtube", "Comprendre le DCF")
         self.assertEqual(task["status"], "awaiting_external")
