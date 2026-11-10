@@ -144,8 +144,21 @@ def run_job(job_id: str) -> None:
             artifact = HANDLERS[agent](ctx, folder)
             add_event(job_id, agent, "done", f"Livrable : {artifact}")
         (folder / "run_notes.json").write_text(json.dumps(ctx["notes"], ensure_ascii=False, indent=2), encoding="utf-8")
-        final_status = "awaiting_external" if job["workflow"] == "youtube" and ctx.get("stickman_enabled", True) else "awaiting_approval"
+        stickman_active = job["workflow"] == "youtube" and ctx.get("stickman_enabled", True)
+        video_reran = "video" in steps
+        final_status = "awaiting_external" if stickman_active and video_reran else "awaiting_approval"
         set_status(job_id, final_status)
+        final_assets_present = (
+            (folder / "stickman_final.mp4").is_file()
+            and any((folder / name).is_file() for name in ("stickman_subtitles.srt", "stickman_subtitles.vtt"))
+        )
+        if stickman_active and video_reran:
+            manifest_status = "AWAITING_STICKMAN_RENDER"
+        elif stickman_active and final_assets_present:
+            manifest_status = "AWAITING_FINAL_APPROVAL"
+        else:
+            manifest_status = "AWAITING_MANUAL_APPROVAL"
+        update_manifest(job_id, manifest_status, extra={"revision_of": ctx.get("revision_of")} if ctx.get("revision_of") else None)
         final_message = ("Passerelle Stickman prête ; le rendu externe doit être terminé avant revue finale."
                          if final_status == "awaiting_external"
                          else "Livrables prêts pour revue (aucune publication)")
@@ -368,6 +381,26 @@ def revise_job(job_id):
                 destination = target / item.relative_to(source)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(resolved, destination)
+    workflow_steps = WORKFLOW_STEPS[parent["workflow"]]
+    start_agent = data["start_agent"]
+    remaining_steps = workflow_steps if start_agent == "orchestrator" else workflow_steps[workflow_steps.index(start_agent):]
+    if "video" in remaining_steps:
+        superseded_names = {"stickman_preview.mp4", "stickman_final.mp4", "stickman_subtitles.srt",
+                            "stickman_subtitles.vtt", "preview.mp4", "final.mp4", "captions.srt", "captions.vtt"}
+        for item in target.rglob("*"):
+            if item.is_file() and not item.is_symlink() and item.name in superseded_names:
+                item.unlink()
+    manifest_path = target / "publishing_manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.pop("human_decision", None)
+            manifest["status"] = "REVISION_QUEUED"
+            manifest["auto_publish"] = False
+            manifest["revision_of"] = job_id
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except (OSError, ValueError, TypeError):
+            pass
     add_event(new_id, "orchestrator", "revision", f"Révision de {job_id}, reprise à {data['start_agent']}.")
     return new_id
 
