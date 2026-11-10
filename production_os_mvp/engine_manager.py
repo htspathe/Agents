@@ -202,7 +202,9 @@ def _ollama_info(model: str) -> dict:
     if not selected and models:
         selected = ""
     installed_model = selected in models if selected else False
+    codex_harness = bool(find_codex())
     ready = bool(executable and running and installed_model)
+    agent_ready = bool(ready and codex_harness)
     if not executable:
         note = "Ollama CLI introuvable."
     elif not running:
@@ -216,12 +218,14 @@ def _ollama_info(model: str) -> dict:
     return {
         "installed": bool(executable),
         "ready": ready,
+        "agent_ready": agent_ready,
         "version": version,
         "service_running": running,
         "model": selected or None,
         "models": models,
         "note": note,
         "requires_codex_harness": True,
+        "agent_note": ("Codex CLI requis pour le mode agent local." if not codex_harness else "Harness Codex disponible pour le modèle local."),
     }
 
 
@@ -275,9 +279,10 @@ def provider_order(settings: dict | None = None) -> list[str]:
     return order
 
 
-def available_providers(settings: dict | None = None, status: dict | None = None) -> list[str]:
+def available_providers(settings: dict | None = None, status: dict | None = None, agentic: bool = False) -> list[str]:
     status = status or get_engine_status()
-    return [provider for provider in provider_order(settings) if status.get(provider, {}).get("ready")]
+    field = "agent_ready" if agentic else "ready"
+    return [provider for provider in provider_order(settings) if status.get(provider, {}).get(field, status.get(provider, {}).get("ready"))]
 
 
 def should_fallback(error_text: str) -> bool:
