@@ -107,7 +107,8 @@ class ProductionTests(unittest.TestCase):
 
     def test_stickman_worker_can_be_started_from_dashboard(self):
         task = self.launch("youtube", "Comprendre la valorisation d'une entreprise")
-        with mock.patch.object(engine_manager, "get_settings", return_value={
+        with mock.patch.object(piper_tts, "ensure_job_narration", return_value={"ready": True}), \
+             mock.patch.object(engine_manager, "get_settings", return_value={
             "primary": "codex", "fallbacks": ["antigravity", "ollama"],
             "auto_fallback": True, "ollama_model": ""
         }), mock.patch.object(engine_manager, "get_engine_status", return_value={
@@ -127,7 +128,8 @@ class ProductionTests(unittest.TestCase):
 
     def test_stickman_worker_can_start_with_antigravity_when_codex_missing(self):
         task = self.launch("youtube", "Tester le moteur Gemini de secours")
-        with mock.patch.object(engine_manager, "get_settings", return_value={
+        with mock.patch.object(piper_tts, "ensure_job_narration", return_value={"ready": True}), \
+             mock.patch.object(engine_manager, "get_settings", return_value={
             "primary": "codex", "fallbacks": ["antigravity", "ollama"],
             "auto_fallback": True, "ollama_model": ""
         }), mock.patch.object(engine_manager, "get_engine_status", return_value={
@@ -245,7 +247,8 @@ class ProductionTests(unittest.TestCase):
             stickman_bridge.mark_preview_ready(job_id, "stickman_preview.mp4")
             return 0, "123e4567-e89b-12d3-a456-426614174000", '{"event":"init"}'
 
-        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+        with mock.patch.object(piper_tts, "ensure_job_narration", return_value={"ready": True}), \
+             mock.patch.object(engine_manager, "get_settings", return_value=settings), \
              mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
              mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_provider):
             result = stickman_worker.run_worker(task["id"], "start")
@@ -284,7 +287,8 @@ class ProductionTests(unittest.TestCase):
             stickman_bridge.mark_preview_ready(job_id, "stickman_preview.mp4")
             return 0, "123e4567-e89b-12d3-a456-426614174000", "{}"
 
-        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+        with mock.patch.object(piper_tts, "ensure_job_narration", return_value={"ready": True}), \
+             mock.patch.object(engine_manager, "get_settings", return_value=settings), \
              mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
              mock.patch.object(quota_monitor, "quota_exhausted_soon", side_effect=fake_quota), \
              mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_run):
