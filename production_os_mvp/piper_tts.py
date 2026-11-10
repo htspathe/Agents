@@ -58,7 +58,7 @@ def get_settings():
     # One-time migration: older local configs sometimes persisted Piper as disabled
     # even though the user had selected it for every YouTube narration. Re-enable
     # Piper once on upgrade; future explicit checkbox choices remain respected.
-    if isinstance(data, dict) and data and int(data.get("settings_schema_version", 0) or 0) < SETTINGS_SCHEMA_VERSION:
+    if isinstance(data, dict) and data and data.get("settings_schema_version") != SETTINGS_SCHEMA_VERSION:
         result["enabled"] = True
         migrated = {
             "enabled": True,
