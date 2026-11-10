@@ -184,10 +184,10 @@ class Handler(BaseHTTPRequestHandler):
                         "revision_status": "queued",
                         "message": "La correction a été transmise à l'agent choisi ; une nouvelle mission a été créée."
                     })
-                return self.respond(200, {
-                    **decision,
-                    "message": "Décision enregistrée. Aucune publication externe n'a été déclenchée."
-                })
+                message = ("Aperçu Stickman approuvé. Le rendu complet est autorisé ; la mission attend le retour de l'agent."
+                           if decision["action"] == "approve_preview"
+                           else "Décision enregistrée. Aucune publication externe n'a été déclenchée.")
+                return self.respond(200, {**decision, "message": message})
             except (ValueError, TypeError) as exc:
                 return self.respond(400, {"error": str(exc)[:250]})
         if path == "/api/upload":
