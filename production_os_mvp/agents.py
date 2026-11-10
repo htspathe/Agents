@@ -17,6 +17,7 @@ from pathlib import Path
 from functools import lru_cache
 
 import engine_manager
+import piper_tts
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -100,6 +101,17 @@ def content(ctx, folder):
               f"Brief : {brief}. Sources internes : {ctx.get('sources', [])}.")
     if correction:
         prompt += f"\n\nConsignes de correction à appliquer : {correction}"
+    if typ == "youtube":
+        target_seconds = int(ctx.get("stickman_duration", 60) or 60)
+        prompt += (
+            f"\n\nPour YouTube, ajoute obligatoirement une section Markdown intitulée "
+            "'## Voix off intégrale (à lire mot pour mot)'. Elle doit contenir uniquement "
+            f"la narration parlée, calibrée pour environ {target_seconds} secondes, "
+            "en français naturel, sans puces, horodatages, indications de caméra ni notes éditoriales. "
+            "Le texte sera lu tel quel par Piper TTS local ; écris des phrases prononçables, "
+            "des nombres exprimés naturellement et des transitions fluides. Ne place pas les sources "
+            "ou les consignes de production dans cette section."
+        )
     draft = llm(prompt, fallback, ctx)
     return write_text(folder, "content.md", draft)
 
@@ -217,6 +229,19 @@ def video(ctx, folder):
 
         content_file = folder / "content.md"
         script = content_file.read_text(encoding="utf-8") if content_file.is_file() else ctx["brief"]
+        narration_info = piper_tts.prepare_job_narration(folder, ctx)
+        config["narration_provider"] = "piper"
+        config["narration_voice"] = narration_info.get("voice", piper_tts.get_settings()["voice"])
+        config["narration_audio"] = "narration.wav" if narration_info.get("ready") else None
+        config["narration_ready"] = bool(narration_info.get("ready"))
+        write_json(folder, "stickman_job.json", config)
+        if narration_info.get("ready"):
+            ctx["notes"].append(
+                f"Voix off générée localement avec Piper ({narration_info.get('voice')}, "
+                f"{narration_info.get('duration_seconds', 0)} s)."
+            )
+        else:
+            ctx["notes"].append("Narration Piper en attente : " + str(narration_info.get("note", "configuration requise")))
         research_file = folder / "research.md"
         research = research_file.read_text(encoding="utf-8") if research_file.is_file() else "Aucune recherche documentaire disponible."
         signature = (
@@ -230,6 +255,25 @@ def video(ctx, folder):
         autopilot_cli = str(stickman_skill_dir() / "scripts" / "autopilot.mjs")
         mission_dir = str(folder.resolve())
         skill_file = str(stickman_skill_dir() / "SKILL.md")
+        if narration_info.get("ready"):
+            narration_block = f"""## Narration obligatoire — Piper local
+- Fournisseur : Piper TTS local, hors ligne
+- Voix fixe de la chaîne : {narration_info.get('voice')}
+- Fichier audio de référence : {mission_dir}/narration.wav
+- Copie dans le projet Stickman si disponible : stickman_project/assets/audio/narration.wav
+- Texte prononcé exact : {mission_dir}/narration.md
+- Métadonnées et attribution : narration_metadata.json et voice_attribution.md
+- Utilise exactement ce WAV comme narration principale. Ne génère pas une seconde voix, ne remplace pas le timbre et ne reformule pas le texte prononcé.
+- L'aperçu doit utiliser les 20 premières secondes de ce même audio ; le rendu final doit utiliser le WAV complet.
+- Aligne les sous-titres sur l'audio réel. Ne simule jamais une synchronisation.
+"""
+        else:
+            narration_block = f"""## Blocage narration — Piper requis
+Piper n'était pas prêt lors de la préparation de la mission.
+Diagnostic : {narration_info.get('note', 'modèle vocal ou environnement Piper manquant')}
+Fichier de diagnostic : narration_blocker.md
+Ne démarre pas une synthèse vocale cloud ou une autre voix. Arrête-toi avant la génération de l'aperçu audio et signale ce prérequis.
+"""
         request = f"""# Production OS vers Stickman Video Director
 
 ## Mission
@@ -246,6 +290,8 @@ def video(ctx, folder):
 - Durée cible : {duration} secondes
 - Langue de narration : {language}
 - Publication : interdite depuis cette mission
+
+{narration_block}
 
 ## Consigne d'exécution
 Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ainsi que les références obligatoires du mode/style sélectionné. Travaille uniquement dans le dossier stickman_project/ de cette mission. Ne modifie jamais le Skill source ni ses exemples acceptés.
@@ -330,8 +376,11 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
             ctx["notes"].append("B5 portrait : la documentation impose un contrôle de mise en page et une nouvelle validation ; la référence acceptée est actuellement paysage.")
         if not status["provider_key_present"] and mode == "autopilot":
             ctx["notes"].append("Aucune clé Gemini détectée dans l'environnement du serveur ; le fournisseur réel doit être configuré ou une alternative gratuite/local vérifiée.")
+        if project_dir.is_dir() and narration_info.get("ready"):
+            piper_tts.ensure_job_narration(folder, ctx, phase="start")
         write_json(folder, "stickman_runtime_status.json", {
-            **status, "project_initialized": initialized, "doctor": doctor_result,
+            **status, "piper": piper_tts.get_status(), "narration": narration_info,
+            "project_initialized": initialized, "doctor": doctor_result,
             "full_video_generated": False, "publication": "DISABLED"
         })
         storyboard = {
