@@ -154,6 +154,29 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(final_manifest["status"], "APPROVED_MANUAL_REVIEW")
         self.assertFalse(final_manifest["auto_publish"])
 
+
+    def test_downstream_revision_keeps_final_video_for_final_review(self):
+        task = self.launch("youtube", "Expliquer le coût réel d'un crédit")
+        output = engine.ROOT / "outputs" / task["id"] / "stickman_project" / "output"
+        output.mkdir(parents=True)
+        (output / "preview.mp4").write_bytes(b"preview")
+        stickman_bridge.mark_preview_ready(task["id"], "stickman_project/output/preview.mp4")
+        engine.decide_job(task["id"], "approve_preview", "Aperçu accepté")
+
+        (output / "final.mp4").write_bytes(b"final")
+        (output / "captions.srt").write_text("captions", encoding="utf-8")
+        stickman_bridge.mark_final_ready(task["id"], "stickman_project/output/final.mp4", "stickman_project/output/captions.srt")
+
+        engine.decide_job(task["id"], "request_changes", "Corriger le rapport QA, pas la vidéo.", "quality")
+        revision_id = engine.revise_job(task["id"])
+        engine.run_job(revision_id)
+
+        revision = engine.job_detail(revision_id)
+        self.assertEqual(revision["status"], "awaiting_approval")
+        self.assertTrue((engine.ROOT / "outputs" / revision_id / "stickman_final.mp4").is_file())
+        manifest = json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())
+        self.assertEqual(manifest["status"], "AWAITING_FINAL_APPROVAL")
+
     def test_reject_requires_reason_and_is_terminal(self):
         task = self.launch("kdp", "Guide de budget personnel")
         with self.assertRaises(ValueError):
