@@ -162,10 +162,20 @@ def stickman_skill_dir() -> Path:
 def stickman_status() -> dict:
     skill = stickman_skill_dir()
     node = shutil.which("node")
+    node_version = None
+    if node:
+        try:
+            version = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=3, check=True).stdout.strip().lstrip("v")
+            node_version = version
+            node_major = int(version.split(".")[0])
+        except (OSError, ValueError, subprocess.SubprocessError):
+            node_major = 0
+    else:
+        node_major = 0
     checks = {
         "skill": (skill / "SKILL.md").is_file(),
         "runtime": (skill / "scripts" / "autopilot.mjs").is_file(),
-        "node": bool(node),
+        "node": bool(node) and node_major >= 20,
         "canvas": (skill / "node_modules" / "@napi-rs" / "canvas").exists(),
         "sharp": (skill / "node_modules" / "sharp").exists(),
         "ffmpeg": bool(shutil.which("ffmpeg")),
@@ -180,6 +190,7 @@ def stickman_status() -> dict:
         "runtime_ready": runtime_ready,
         "skill_dir": str(skill),
         "node_path": node,
+        "node_version": node_version,
         "checks": checks,
         "provider_key_present": bool(os.environ.get("GEMINI_API_KEY")),
         "provider_note": "La présence d'une clé ne confirme ni quota, ni facturation, ni accès au modèle."
