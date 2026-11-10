@@ -24,6 +24,7 @@ DEFAULT_SETTINGS = {
     "fallbacks": ["antigravity", "ollama"],
     "auto_fallback": True,
     "ollama_model": "",
+    "allow_gemini_api_key": False,
 }
 _STATUS_LOCK = threading.Lock()
 _STATUS_CACHE: dict | None = None
@@ -63,6 +64,8 @@ def get_settings() -> dict:
                 result["auto_fallback"] = stored["auto_fallback"]
             if isinstance(stored.get("ollama_model"), str):
                 result["ollama_model"] = stored["ollama_model"].strip()[:120]
+            if isinstance(stored.get("allow_gemini_api_key"), bool):
+                result["allow_gemini_api_key"] = stored["allow_gemini_api_key"]
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -91,11 +94,15 @@ def save_settings(data: dict) -> dict:
     model = data.get("ollama_model", "")
     if not isinstance(model, str) or len(model.strip()) > 120:
         raise ValueError("Nom de modèle Ollama invalide")
+    allow_gemini_api_key = data.get("allow_gemini_api_key", False)
+    if not isinstance(allow_gemini_api_key, bool):
+        raise ValueError("L'autorisation Gemini API doit être un booléen")
     settings = {
         "primary": primary,
         "fallbacks": fallbacks,
         "auto_fallback": auto_fallback,
         "ollama_model": model.strip(),
+        "allow_gemini_api_key": allow_gemini_api_key,
     }
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,6 +171,15 @@ def _command(executable: str, args: list[str]):
     if os.name == "nt" and Path(executable).suffix.lower() in {".cmd", ".bat"}:
         return subprocess.list2cmdline([executable, *args]), True
     return [executable, *args], False
+
+
+def _antigravity_api_key_mode() -> bool:
+    config_path = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        return config.get("modelProvider") == "gemini" and bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _version(executable: str | None) -> str | None:
@@ -239,6 +255,14 @@ def get_engine_status(refresh: bool = False) -> dict:
     settings = get_settings()
     codex_version = _version(codex)
     agy_version = _version(agy)
+    gemini_api_key_mode = _antigravity_api_key_mode()
+    allow_gemini_api_key = settings.get("allow_gemini_api_key", False)
+    antigravity_ready = bool(agy and agy_version and (not gemini_api_key_mode or allow_gemini_api_key))
+    antigravity_note = (
+        "Mode Gemini API par clé détecté : appels potentiellement facturables. Autorisation désactivée dans Production OS."
+        if gemini_api_key_mode and not allow_gemini_api_key
+        else "Antigravity CLI détecté ; authentification Google vérifiée au premier lancement."
+    )
     result = {
         "codex": {
             "installed": bool(codex and codex_version),
@@ -252,10 +276,10 @@ def get_engine_status(refresh: bool = False) -> dict:
         },
         "antigravity": {
             "installed": bool(agy and agy_version),
-            "ready": bool(agy and agy_version),
+            "ready": antigravity_ready,
             "version": agy_version,
-            "authentication": "not_checked",
-            "note": "Antigravity CLI détecté ; connecte ton compte Google une fois avec agy.",
+            "authentication": "api_key" if gemini_api_key_mode else "account_or_unknown",
+            "note": antigravity_note,
         } if agy and agy_version else {
             "installed": bool(agy), "ready": False, "version": agy_version,
             "authentication": "not_checked", "note": "Antigravity CLI introuvable ou non exécutable.",
@@ -289,7 +313,9 @@ def should_fallback(error_text: str) -> bool:
     value = str(error_text or "").lower()
     markers = (
         "429", "rate limit", "rate_limit", "quota", "resource exhausted",
-        "usage limit", "limit reached", "billing", "insufficient_quota",
+        "usage limit", "limit reached", "exceeded your quota", "quota exceeded",
+        "you've hit your usage limit", "you have hit your usage limit",
+        "rate exceeded", "capacity exhausted", "billing", "insufficient_quota",
         "temporarily unavailable", "service unavailable", "overloaded",
         "502", "503", "504", "gateway timeout", "authentication required",
         "unauthorized", "invalid api key", "token expired", "sign in",
