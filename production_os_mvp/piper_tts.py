@@ -19,6 +19,7 @@ VOICE_CREDIT = (
     "https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/medium"
 )
 DEFAULT_SETTINGS = {"enabled": True, "voice": DEFAULT_VOICE, "python_path": "", "voice_dir": "", "sentence_silence": 0.18}
+SETTINGS_SCHEMA_VERSION = 1
 _STATUS_CACHE = None
 _STATUS_CACHE_AT = 0.0
 _PACKAGE_CACHE = {}
@@ -35,8 +36,10 @@ def settings_path():
 
 def get_settings():
     result = dict(DEFAULT_SETTINGS)
+    data = {}
+    path = settings_path()
     try:
-        data = json.loads(settings_path().read_text(encoding="utf-8-sig"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         if isinstance(data, dict):
             if isinstance(data.get("enabled"), bool):
                 result["enabled"] = data["enabled"]
@@ -50,7 +53,30 @@ def get_settings():
             if isinstance(silence, (int, float)) and not isinstance(silence, bool) and 0 <= float(silence) <= 1:
                 result["sentence_silence"] = float(silence)
     except (OSError, ValueError, TypeError):
-        pass
+        data = {}
+
+    # One-time migration: older local configs sometimes persisted Piper as disabled
+    # even though the user had selected it for every YouTube narration. Re-enable
+    # Piper once on upgrade; future explicit checkbox choices remain respected.
+    if isinstance(data, dict) and data and int(data.get("settings_schema_version", 0) or 0) < SETTINGS_SCHEMA_VERSION:
+        result["enabled"] = True
+        migrated = {
+            "enabled": True,
+            "voice": result["voice"],
+            "python_path": result["python_path"],
+            "voice_dir": result["voice_dir"],
+            "sentence_silence": result["sentence_silence"],
+            "settings_schema_version": SETTINGS_SCHEMA_VERSION,
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp = path.with_suffix(".migration.tmp")
+            temp.write_text(json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            os.replace(temp, path)
+        except OSError:
+            # The in-memory setting is still enabled for this process; the next
+            # successful save persists it.
+            pass
     return result
 
 
@@ -74,7 +100,8 @@ def save_settings(data):
     if isinstance(silence, bool) or not isinstance(silence, (int, float)) or not 0 <= float(silence) <= 1:
         raise ValueError("Le silence entre phrases doit être compris entre 0 et 1 seconde.")
     result = {"enabled": enabled, "voice": voice.strip(), "python_path": python_path.strip(),
-              "voice_dir": voice_dir.strip(), "sentence_silence": float(silence)}
+              "voice_dir": voice_dir.strip(), "sentence_silence": float(silence),
+              "settings_schema_version": SETTINGS_SCHEMA_VERSION}
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
