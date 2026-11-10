@@ -73,7 +73,8 @@ class ProductionTests(unittest.TestCase):
         self.assertTrue((folder / "stickman_request.md").is_file())
         self.assertTrue((folder / "stickman_job.json").is_file())
         self.assertTrue((folder / "stickman_runtime_status.json").is_file())
-
+        with self.assertRaises(ValueError):
+            engine.decide_job(task["id"], "approve", "Approbation prématurée")
 
     def test_library_indexes_artifacts_and_filters(self):
         task = self.launch("youtube", "Comprendre le DCF et sa valorisation")
