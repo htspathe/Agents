@@ -67,7 +67,11 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(task["status"], "awaiting_approval")
         folder = engine.ROOT / "outputs" / task["id"]
         data = json.loads((folder / "storyboard.json").read_text())
-        self.assertTrue(data["requires_original_footage"])
+        self.assertFalse(data["requires_original_footage"])
+        self.assertEqual(data["type"], "stickman_handoff")
+        self.assertTrue((folder / "stickman_request.md").is_file())
+        self.assertTrue((folder / "stickman_job.json").is_file())
+        self.assertTrue((folder / "stickman_runtime_status.json").is_file())
 
 
     def test_library_indexes_artifacts_and_filters(self):
@@ -85,6 +89,45 @@ class ProductionTests(unittest.TestCase):
 
         searched = engine.list_library(query="Comprendre le DCF")
         self.assertIn(task["id"], {item["id"] for item in searched["jobs"]})
+
+
+    def test_human_approval_and_targeted_revision(self):
+        task = self.launch("youtube", "Pourquoi les riches utilisent-ils la dette ?")
+        decision = engine.decide_job(
+            task["id"], "request_changes",
+            "Renforcer l'accroche et vérifier l'exemple financier.",
+            "video"
+        )
+        self.assertEqual(decision["status"], "changes_requested")
+
+        revision_id = engine.revise_job(task["id"])
+        revision_input = json.loads(engine.get_job(revision_id)["input_json"])
+        self.assertEqual(revision_input["revision_of"], task["id"])
+        self.assertEqual(revision_input["start_agent"], "video")
+        self.assertIn("Renforcer l'accroche", revision_input["correction_request"])
+
+        engine.run_job(revision_id)
+        revision = engine.job_detail(revision_id)
+        self.assertEqual(revision["status"], "awaiting_approval")
+        self.assertTrue(any(item["name"] == "stickman_request.md" for item in revision["files"]))
+
+        approved = engine.decide_job(revision_id, "approve", "Aperçu accepté")
+        self.assertEqual(approved["status"], "approved")
+        self.assertEqual(engine.get_job(revision_id)["status"], "approved")
+        self.assertFalse(json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())["auto_publish"])
+
+    def test_reject_requires_reason_and_is_terminal(self):
+        task = self.launch("kdp", "Guide de budget personnel")
+        with self.assertRaises(ValueError):
+            engine.decide_job(task["id"], "reject", "non")
+        result = engine.decide_job(task["id"], "reject", "Le contenu ne répond pas au brief.")
+        self.assertEqual(result["status"], "rejected")
+        with self.assertRaises(ValueError):
+            engine.decide_job(task["id"], "approve", "")
+
+    def test_invalid_stickman_mode_and_style(self):
+        with self.assertRaises(ValueError):
+            engine.new_job({"workflow": "youtube", "brief": "Test configuration Stickman", "stickman_mode": "autopilot", "stickman_style": "A6"})
 
     def test_invalid_workflow_and_no_rights(self):
         with self.assertRaises(ValueError):
