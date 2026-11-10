@@ -420,6 +420,22 @@ class ProductionTests(unittest.TestCase):
         self.assertNotIn("--skip-git-repo-check", args[:args.index("exec")])
         self.assertIn("--json", args)
 
+    def test_dashboard_start_action_recovers_existing_preview_without_provider(self):
+        task = self.launch("youtube", "Récupération depuis le bouton dashboard")
+        folder = Path(engine.ROOT) / "outputs" / task["id"]
+        output = folder / "stickman_project" / "output"
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "preview.mp4").write_bytes(b"existing-preview")
+
+        with mock.patch.object(engine_manager, "get_engine_status", side_effect=AssertionError("provider must not start")), \
+             mock.patch.object(stickman_worker.subprocess, "Popen", side_effect=AssertionError("worker must not relaunch")):
+            result = stickman_worker.start_worker(task["id"], "start")
+
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["state"], "waiting_preview_approval")
+        self.assertEqual(engine.get_job(task["id"])["status"], "awaiting_preview_approval")
+        self.assertTrue((folder / "stickman_preview.mp4").is_file())
+
     def test_stickman_worker_imports_existing_preview_without_rerunning_sandboxed_agent(self):
         task = self.launch("youtube", "Récupération aperçu après échec SQLite")
         folder = Path(engine.ROOT) / "outputs" / task["id"]
