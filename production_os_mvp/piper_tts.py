@@ -297,6 +297,7 @@ Ne démarre pas une synthèse vocale cloud ou une autre voix. Arrête-toi avant 
                     "narration_voice": voice,
                     "narration_audio": "narration.wav" if ready else None,
                     "narration_ready": ready,
+                    "narration_language": info.get("language", manifest.get("narration_language", "fr")),
                 })
                 _write_json(manifest_path, manifest)
         except (OSError, ValueError, TypeError):
@@ -319,6 +320,18 @@ def _stage_for_stickman(folder):
 
 def prepare_job_narration(folder, ctx, force=False):
     folder = Path(folder).resolve()
+    language = str(ctx.get("language") or ctx.get("narration_language") or "fr").strip().lower()
+    if language.startswith("en") or "anglais" in language:
+        note = (
+            "Le profil Piper actuellement configuré est français (fr_FR-siwis-medium). "
+            "Aucune voix anglaise vérifiée n'est installée. La mission est bloquée pour éviter "
+            "une narration anglaise avec une voix française. Ajoute un profil vocal anglais avec "
+            "son modèle et son attribution avant de lancer Stickman."
+        )
+        (folder / "narration_blocker.md").write_text(note + "\\n", encoding="utf-8")
+        info = {"ready": False, "note": note, "voice": get_settings()["voice"]}
+        _update_mission_files(folder, info)
+        return info
     content_file = folder / "content.md"
     content = content_file.read_text(encoding="utf-8") if content_file.is_file() else ""
     narration = extract_voiceover(content)
@@ -365,6 +378,7 @@ def prepare_job_narration(folder, ctx, force=False):
                 "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
                 "script_sha256": script_hash, "script_characters": len(narration),
                 "target_duration_seconds": int(ctx.get("stickman_duration", 60) or 60),
+                "language": language,
                 "created_at": time.time(), "offline": True}
     _write_json(metadata_path, metadata)
     attribution = ("# Attribution de la voix\n\n" + VOICE_CREDIT + "\n\n"
@@ -384,8 +398,11 @@ def ensure_job_narration(folder, ctx, phase="start"):
     if phase == "resume":
         if not audio.is_file() or not metadata.is_file():
             raise PiperError("La narration Piper approuvée est introuvable. Restaure narration.wav et narration_metadata.json ; aucune autre voix ne sera substituée.")
-        _stage_for_stickman(folder)
         info = json.loads(metadata.read_text(encoding="utf-8"))
+        language = str(ctx.get("narration_language") or ctx.get("language") or info.get("language", "fr")).strip().lower()
+        if (language.startswith("en") or "anglais" in language) and not str(info.get("language", "fr")).lower().startswith("en"):
+            raise PiperError("La narration approuvée est française alors que la mission est anglaise. Ne réutilise pas cette voix ; configure un profil anglais avant le rendu.")
+        _stage_for_stickman(folder)
         _update_mission_files(folder, {"ready": True, **info})
         return info
     return prepare_job_narration(folder, ctx, force=False)
