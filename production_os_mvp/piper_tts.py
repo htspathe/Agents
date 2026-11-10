@@ -328,7 +328,7 @@ def prepare_job_narration(folder, ctx, force=False):
             "une narration anglaise avec une voix française. Ajoute un profil vocal anglais avec "
             "son modèle et son attribution avant de lancer Stickman."
         )
-        (folder / "narration_blocker.md").write_text(note + "\\n", encoding="utf-8")
+        (folder / "narration_blocker.md").write_text(note + "\n", encoding="utf-8")
         info = {"ready": False, "note": note, "voice": get_settings()["voice"]}
         _update_mission_files(folder, info)
         return info
