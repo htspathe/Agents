@@ -141,6 +141,9 @@ def find_codex() -> str | None:
     appdata = os.environ.get("APPDATA", "").strip()
     local = os.environ.get("LOCALAPPDATA", "").strip()
     extra = []
+    configured_stickman = os.environ.get("STICKMAN_CODEX_BIN", "").strip()
+    if configured_stickman:
+        extra.append(configured_stickman)
     if appdata:
         extra.append(str(Path(appdata) / "npm" / "codex.cmd"))
     if local:
