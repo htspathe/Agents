@@ -141,7 +141,7 @@ class ProductionTests(unittest.TestCase):
         self.assertIn("never", args)
         self.assertNotIn("--yolo", args)
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
-        self.assertEqual(args[-3:], ["exec", "--json", "-"])
+        self.assertEqual(args[-4:], ["exec", "--skip-git-repo-check", "--json", "-"])
 
     def test_engine_manager_default_chain_and_manual_mode(self):
         defaults = {
