@@ -197,6 +197,25 @@ class ProductionTests(unittest.TestCase):
         self.assertIn("ollama", args)
         self.assertIn("qwen3:8b", args)
 
+    def test_worker_codex_exec_flags_follow_exec_subcommand(self):
+        for phase, session_id in [
+            ("start", None),
+            ("resume", "123e4567-e89b-12d3-a456-426614174000"),
+        ]:
+            args = stickman_worker.build_codex_args(
+                phase, Path(engine.ROOT), session_id=session_id
+            )
+            self.assertLess(args.index("exec"), args.index("--skip-git-repo-check"))
+            self.assertNotIn("--skip-git-repo-check", args[:args.index("exec")])
+            self.assertIn("--json", args)
+
+    def test_engine_manager_codex_exec_flags_follow_exec_subcommand(self):
+        args = engine_manager.build_codex_text_args(Path(engine.ROOT) / "answer.md")
+        self.assertLess(args.index("exec"), args.index("--skip-git-repo-check"))
+        self.assertLess(args.index("exec"), args.index("--output-last-message"))
+        self.assertNotIn("--skip-git-repo-check", args[:args.index("exec")])
+        self.assertIn("--json", args)
+
     def test_stickman_worker_falls_back_from_codex_quota_to_antigravity(self):
         task = self.launch("youtube", "Test bascule Codex vers Gemini")
         settings = {
