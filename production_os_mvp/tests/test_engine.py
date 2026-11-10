@@ -165,6 +165,27 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(provenance, "blocked")
         self.assertIn("générique", error)
 
+    def test_piper_rejects_audio_shorter_than_20_second_preview(self):
+        folder = Path(engine.ROOT) / "outputs" / "piper-too-short"
+        folder.mkdir(parents=True)
+        (folder / "content.md").write_text(
+            "## Voix off intégrale\nCe brouillon est incomplet.\n",
+            encoding="utf-8"
+        )
+        settings = {"voice": "fr_FR-siwis-medium", "sentence_silence": 0.18}
+        with mock.patch.object(piper_tts, "get_settings", return_value=settings), \
+             mock.patch.object(piper_tts, "get_status", return_value={"ready": True}), \
+             mock.patch.object(piper_tts, "synthesize_to_wav", return_value={
+                 "duration_seconds": 7.4, "voice": settings["voice"]
+             }):
+            result = piper_tts.prepare_job_narration(folder, {
+                "brief": "Pourquoi l'inflation du train de vie absorbe les augmentations ?",
+                "stickman_duration": 60
+            })
+        self.assertFalse(result["ready"])
+        self.assertIn("trop court", result["note"])
+        self.assertTrue((folder / "narration_blocker.md").is_file())
+
     def test_piper_generates_and_stages_same_voice_wav(self):
         folder = Path(engine.ROOT) / "outputs" / "piper-ready"
         project = folder / "stickman_project"
@@ -219,7 +240,7 @@ class ProductionTests(unittest.TestCase):
         self.assertTrue((folder / "stickman_request.md").is_file())
         self.assertTrue((folder / "stickman_job.json").is_file())
         self.assertTrue((folder / "stickman_runtime_status.json").is_file())
-        self.assertTrue((folder / "narration.md").is_file())
+        self.assertFalse((folder / "narration.md").is_file())
         self.assertTrue((folder / "narration_blocker.md").is_file())
         self.assertFalse((folder / "narration.wav").exists())
         self.assertIn("Piper", (folder / "stickman_request.md").read_text(encoding="utf-8"))
