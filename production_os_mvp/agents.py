@@ -242,7 +242,9 @@ def video(ctx, folder):
 
 ## Mission
 - Identifiant Production OS : {ctx.get('job_id', 'voir le dossier parent')}
+- Workspace à ouvrir dans Codex/Claude Code : {ROOT}
 - Dossier de travail de la mission : {mission_dir}
+- Skill installé dans le workspace : .agents/skills/directing-stickman-videos ou .claude/skills/directing-stickman-videos
 - Pont Production OS : {bridge_cli}
 - Chaîne : {channel}
 - Sujet : {ctx['brief']}
