@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import textwrap
 import urllib.error
 import urllib.request
@@ -94,7 +95,7 @@ def content(ctx, folder):
     fallback = {
         "clogz": f"# Plan de campagne CLOGZ\n\nProduit / intention : {brief}\n\n## Positionnement\nConfort quotidien, style urbain et preuve produit à documenter.\n\n## Angle 1\nMontrer la paire en situation réelle à Dakar.\n\n## Angle 2\nComparer les coloris et inviter à choisir sa pointure.\n\n## Storyboard publicitaire (15 s)\n0–3 s : gros plan de la paire ; 3–9 s : démonstration ; 9–12 s : prix à vérifier ; 12–15 s : appel à consulter clogz.sn.\n\n## Vérifications\nNe pas promettre livraison gratuite, stocks ou promotion sans confirmation Shopify.",
         "kdp": f"# Concept de livre\n\nIdée : {brief}\n\n## Public cible\nÀ préciser avec des recherches marché indépendantes.\n\n## Table des matières (proposition)\n1. Introduction\n2. Les principes fondamentaux\n3. Les méthodes essentielles\n4. Mise en pratique\n5. Exercices ou exemples\n6. Synthèse et ressources\n\n## Originalité\nAjouter des exemples vérifiés, une expertise éditoriale et une relecture humaine.\n\n**Ce fichier n'est pas un manuscrit complet.**",
-        "youtube": f"# Script et structure YouTube\n\nSujet : {brief}\n\n## Accroche\nUne question concrète qui ouvre la problématique, sans chiffres non sourcés.\n\n## Découpage\n1. Introduction (0:00–0:30)\n2. Contexte et définitions\n3. Trois mécanismes ou exemples vérifiables\n4. Limites, risques et contre-arguments\n5. Conclusion et appel à l'action\n\n## Voix off (brouillon)\nAujourd'hui, nous allons comprendre : {brief}. Nous examinerons les mécanismes, les faits à vérifier et leurs implications.\n\n## Sources\nAjouter les références externes avant une publication factuelle."
+        "youtube": f"# Script et structure YouTube\n\nSujet / brief : {brief}\n\n## Plan éditorial à valider\nConstruire une accroche claire, expliquer un seul mécanisme, présenter un exemple concret et conclure avec une action utile.\n\n## Voix off intégrale (à lire mot pour mot)\n\n## Alerte\nAucun texte parlé complet n'a été généré par les moteurs IA. L'agent Piper validera la narration et utilisera un exemple éditorial vérifié uniquement pour le pilote inflation du train de vie. Autrement, il bloquera la vidéo jusqu'à un véritable script.\n\n## Sources\nVérifier les références externes avant publication."
     }[typ]
     prompt = (f"Tu es un agent de production éditoriale responsable. Rédige en français un document Markdown exploitable pour le projet {typ}. "
               "N'invente pas de prix, données ou sources. Ajoute une liste des points à valider. "
@@ -252,6 +253,9 @@ def video(ctx, folder):
             "servent uniquement d'inspiration de marque, sans fusionner leurs contrats techniques ou copier leurs personnages."
         )
         bridge_cli = str(ROOT / "stickman_bridge.py")
+        python_exec = str(Path(sys.executable).resolve())
+        ffmpeg_exec = shutil.which("ffmpeg") or "NON DÉTECTÉ"
+        ffprobe_exec = shutil.which("ffprobe") or "NON DÉTECTÉ"
         autopilot_cli = str(stickman_skill_dir() / "scripts" / "autopilot.mjs")
         mission_dir = str(folder.resolve())
         skill_file = str(stickman_skill_dir() / "SKILL.md")
@@ -282,6 +286,9 @@ Ne démarre pas une synthèse vocale cloud ou une autre voix. Arrête-toi avant 
 - Dossier de travail de la mission : {mission_dir}
 - Skill source à lire (lecture seule) : {skill_file}
 - Pont Production OS : {bridge_cli}
+- Python de Production OS (ne pas utiliser py -3) : {python_exec}
+- ffmpeg détecté par Production OS : {ffmpeg_exec}
+- ffprobe détecté par Production OS : {ffprobe_exec}
 - Chaîne : {channel}
 - Sujet : {ctx['brief']}
 - Mode : {'B · Autopilot' if mode == 'autopilot' else 'A · Director'}
@@ -301,13 +308,13 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
 3. Préserve le sens du sujet, la continuité du personnage, le rythme de narration, des sous-titres synchronisés et des effets sonores pertinents. Conçois le ratio demandé nativement, sans recadrer une vidéo paysage pour prétendre obtenir un vrai portrait.
 4. Pour Autopilot, vérifie d'abord la configuration locale, les fournisseurs disponibles et leurs coûts. N'effectue aucun appel payant, achat de crédits ou abonnement sans autorisation explicite. Si aucun fournisseur gratuit/local utilisable n'est configuré, arrête-toi et fournis la liste exacte des prérequis manquants.
 5. Prépare un aperçu d'environ 20 secondes avec son et sous-titres. Vérifie qu'il est lisible et synchronisé, puis importe-le dans Production OS avec :
-   py -3 "{bridge_cli}" preview-ready {ctx.get('job_id', '')} --file "stickman_project/output/preview.mp4"
+   "{python_exec}" "{bridge_cli}" preview-ready {ctx.get('job_id', '')} --file "stickman_project/output/preview.mp4"
    Cette commande fait passer la mission à "Aperçu à valider". Arrête-toi et demande à l'utilisateur de valider l'aperçu dans le dashboard. Ne lance jamais le rendu complet avant cette approbation.
 6. Après que l'utilisateur a approuvé l'aperçu, vérifie :
-   py -3 "{bridge_cli}" status {ctx.get('job_id', '')}
+   "{python_exec}" "{bridge_cli}" status {ctx.get('job_id', '')}
    Ne continue que si le statut est "render_authorized". Pour B1-B4, depuis le dossier de mission, enregistre l'approbation dans le runtime avec node "{autopilot_cli}" approve "stickman_project/project.json" --note "Aperçu approuvé dans Production OS", puis lance node "{autopilot_cli}" render "stickman_project/project.json". Pour B5, suis sa route character-explainer dédiée ; pour Director/A6, fournis les prompts et le rendu selon le contrat Director, sans utiliser les commandes Autopilot B1-B4.
 7. Quand le MP4 final et le fichier de sous-titres SRT/VTT sont prêts, importe-les :
-   py -3 "{bridge_cli}" final-ready {ctx.get('job_id', '')} --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
+   "{python_exec}" "{bridge_cli}" final-ready {ctx.get('job_id', '')} --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
    La mission passe alors à "À valider" pour la revue du rendu final. Ne publie rien sur YouTube.
 8. Si Production OS affiche "Corrections demandées" ou "Rejetée", arrête cette ancienne mission. Pour une correction, reprends uniquement la nouvelle mission créée par Production OS.
 
