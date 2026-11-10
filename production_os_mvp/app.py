@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
+import stickman_worker
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
@@ -71,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
                                "agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
                                "workflows": LABELS, "ffmpeg_installed": shutil.which("ffmpeg") is not None,
                                "ollama_model": os.environ.get("OLLAMA_MODEL") or None,
-                               "stickman": stickman_status()})
+                               "stickman": stickman_status(), "codex": stickman_worker.codex_status()})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -120,7 +121,10 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})", path)
         if m:
             detail = engine.job_detail(m.group(1))
-            return self.respond(200, detail) if detail else self.respond(404, {"error": "Mission introuvable"})
+            if not detail:
+                return self.respond(404, {"error": "Mission introuvable"})
+            detail["stickman_worker"] = stickman_worker.get_status(m.group(1))
+            return self.respond(200, detail)
         m = re.fullmatch(r"/api/files/([0-9a-f]{12})/([^/]+)", path)
         if m:
             job_id, filename = m.groups()
@@ -161,6 +165,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/stickman/(start|resume)", path)
+        if m:
+            if length > 2000:
+                return self.respond(413, {"error": "Requête worker trop volumineuse"})
+            try:
+                body = self.rfile.read(length)
+                if body:
+                    data = json.loads(body)
+                    if not isinstance(data, dict):
+                        raise ValueError("Objet JSON attendu")
+                result = stickman_worker.start_worker(m.group(1), m.group(2))
+                return self.respond(202, result)
+            except (ValueError, TypeError) as exc:
+                return self.respond(400, {"error": str(exc)[:250]})
         m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/decision", path)
         if m:
             if length > 5000:
@@ -175,6 +193,20 @@ class Handler(BaseHTTPRequestHandler):
                     data.get("note", ""),
                     data.get("target_agent", "orchestrator")
                 )
+                if decision["action"] == "approve_preview":
+                    try:
+                        worker_result = stickman_worker.start_worker(m.group(1), "resume")
+                        return self.respond(202, {
+                            **decision,
+                            "worker": worker_result,
+                            "message": "Aperçu approuvé. Codex reprend automatiquement le rendu complet ; aucune publication n'est déclenchée."
+                        })
+                    except ValueError as exc:
+                        return self.respond(200, {
+                            **decision,
+                            "worker_error": str(exc),
+                            "message": "Aperçu approuvé et rendu autorisé. La reprise automatique n'a pas démarré : " + str(exc) + ". Tu peux réessayer depuis le panneau Stickman."
+                        })
                 if decision["action"] == "request_changes":
                     revision_id = engine.revise_job(m.group(1))
                     engine.run_async(revision_id)
