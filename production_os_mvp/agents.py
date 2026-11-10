@@ -15,6 +15,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from functools import lru_cache
+
+import engine_manager
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -59,25 +61,8 @@ def safe_text(value, maxlen=180):
 
 
 def llm(prompt: str, fallback: str, ctx: dict) -> str:
-    """Optional LOCAL Ollama only; honest deterministic fallback."""
-    model = os.environ.get("OLLAMA_MODEL", "").strip()
-    if not model:
-        ctx["notes"].append("Ollama non configuré : gabarits déterministes, sans génération IA.")
-        return fallback
-    payload = json.dumps({"model": model, "prompt": prompt[:9000], "stream": False, "options": {"temperature": 0.45}}).encode()
-    try:
-        req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=payload,
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=80) as resp:
-            answer = json.loads(resp.read(2_000_000).decode("utf-8"))
-        out = answer.get("response", "").strip()
-        if out:
-            ctx["notes"].append(f"Génération locale via Ollama : {model}.")
-            return out[:18000]
-        raise ValueError("Réponse vide")
-    except (TimeoutError, ValueError, OSError, urllib.error.URLError) as exc:
-        ctx["notes"].append(f"Ollama indisponible ({type(exc).__name__}) : mode gabarit utilisé.")
-        return fallback
+    """Generate text through the configured provider chain; keep deterministic fallback honest."""
+    return engine_manager.generate_text(prompt, fallback, ctx)
 
 
 def research(ctx, folder):
