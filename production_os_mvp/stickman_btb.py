@@ -146,6 +146,9 @@ def render(ctx: dict, folder: Path) -> str:
     _run(["node", cli, "doctor"], timeout=75)
     idea = str(ctx.get("brief", "")).strip()
     explicitly_provided = bool(str(ctx.get("narration", "")).strip())
+    language = ctx.get("voice_language", "fr")
+    if language not in ("fr", "en"):
+        raise ValueError("Choisir le français ou l'anglais pour la voix.")
     fallback = (
         f"Pourquoi s'intéresser à cette question : {idea} ? "
         "Pour comprendre un mécanisme financier, il faut d'abord identifier ce qui crée de la valeur, "
@@ -154,11 +157,21 @@ def render(ctx: dict, folder: Path) -> str:
         "La prochaine étape consiste à comparer des exemples documentés "
         "et à vérifier les chiffres avant de prendre une décision."
     )
+    if language == "en":
+        fallback = (
+            f"Why does this question matter: {idea}? "
+            "A good financial explanation begins with the source of value, the costs, "
+            "and the risks. A positive scenario is never a guarantee of future returns. "
+            "Before drawing conclusions, compare documented examples and verify the "
+            "numbers independently. Understanding uncertainty matters more than "
+            "claiming that an investment is certain to succeed."
+        )
     if explicitly_provided:
         script = str(ctx["narration"]).strip()
     else:
         prompt = (
-            "Rédige uniquement un script de narration original en français de 65 à 95 mots "
+            ("Write only an original English narration of 65 to 95 words " if language == "en"
+             else "Rédige uniquement un script de narration original en français de 65 à 95 mots ")
             "pour une vidéo courte du média Brain to Billions. Pas de titres Markdown, de balises "
             "ni de chiffres, sources ou citations inventés. Présente les risques et nuances "
             f"du sujet suivant : {idea}"
@@ -171,9 +184,6 @@ def render(ctx: dict, folder: Path) -> str:
     write_text(folder, "narration.txt", script)
     wav = folder / "narration.wav"
     profile = load_voice_profile()
-    language = ctx.get("voice_language", "fr")
-    if language not in ("fr", "en"):
-        raise ValueError("Choisir le français ou l'anglais pour la voix.")
     voice_name = _produce_narration(script, folder, wav, profile, language)
     duration = _duration(wav)
     if not 8 <= duration <= PREVIEW_LIMIT:
