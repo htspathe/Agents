@@ -7,6 +7,7 @@ Windows SAPI is used only when no user-provided WAV is configured.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -52,26 +53,54 @@ def _duration(media: Path) -> float:
     return duration
 
 
-def _produce_narration(script: str, folder: Path, wav: Path) -> str:
-    supplied = os.environ.get("STICKMAN_VOICE_WAV", "").strip()
-    if supplied:
-        src = Path(supplied).expanduser().resolve()
-        if src.suffix.lower() != ".wav" or not src.is_file():
-            raise ValueError("STICKMAN_VOICE_WAV doit désigner un WAV local valide.")
-        shutil.copyfile(src, wav)
-        return "WAV utilisateur (voix non modifiée)"
+VOICE_PROFILE_PATH = Path(__file__).resolve().with_name("brain_to_billions_voice.json")
+
+
+def load_voice_profile(path: Path | None = None) -> dict:
+    """One account-level voice configuration, never auto-select another speaker."""
+    src = path or VOICE_PROFILE_PATH
+    profile = json.loads(src.read_text(encoding="utf-8"))
+    required = ("brand", "narrator_key", "provider", "voice_name", "language",
+                "speech_rate", "volume", "approval_status")
+    missing = [key for key in required if key not in profile]
+    if missing:
+        raise ValueError(f"Profil voix incomplet : {', '.join(missing)}")
+    if profile["provider"] != "windows_sapi":
+        raise ValueError("Ce MVP supporte uniquement le fournisseur Windows SAPI verrouillé.")
+    if not all(isinstance(profile[key], str) and profile[key].strip()
+               for key in ("narrator_key", "voice_name", "language")):
+        raise ValueError("Identité de voix ou langue vide dans le profil.")
+    if not isinstance(profile["speech_rate"], int) or not -10 <= profile["speech_rate"] <= 10:
+        raise ValueError("speech_rate hors limites SAPI")
+    if not isinstance(profile["volume"], int) or not 0 <= profile["volume"] <= 100:
+        raise ValueError("volume hors limites SAPI")
+    if profile["approval_status"] not in ("provisional", "approved"):
+        raise ValueError("Statut de voix inconnu.")
+    return profile
+
+
+def _produce_narration(script: str, folder: Path, wav: Path, profile: dict) -> str:
+    if os.environ.get("STICKMAN_VOICE_WAV", "").strip():
+        raise ValueError(
+            "Voice Lock actif : STICKMAN_VOICE_WAV contournerait le narrateur fixe. "
+            "Retirer cette variable et utiliser la voix configurée dans brain_to_billions_voice.json."
+        )
     if sys.platform != "win32":
-        raise RuntimeError("Voix locale Windows requise, ou fournir STICKMAN_VOICE_WAV.")
+        raise RuntimeError("Voice Lock Windows SAPI non disponible ici ; aucune voix de remplacement automatique.")
     text_file = folder / "narration.txt"
     text_file.write_text(script + "\n", encoding="utf-8")
-    escape = lambda p: str(p).replace("'", "''")
+    escape = lambda value: str(value).replace("'", "''")
     ps = folder / "_create_voice.ps1"
     ps.write_text(
         "Add-Type -AssemblyName System.Speech\n"
         "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer\n"
-        "$v=$s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'fr-*' } | Select-Object -First 1\n"
-        "if ($null -eq $v) { throw 'Aucune voix francaise SAPI disponible' }\n"
-        "$s.SelectVoice($v.VoiceInfo.Name)\n"
+        f"$requiredName='{escape(profile['voice_name'])}'\n"
+        f"$requiredCulture='{escape(profile['language'])}'\n"
+        "$installed=@($s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Name -ceq $requiredName -and $_.VoiceInfo.Culture.Name -eq $requiredCulture })\n"
+        "if ($installed.Count -ne 1) { throw ('La voix verrouillee est absente : ' + $requiredName + ' / ' + $requiredCulture) }\n"
+        "$s.SelectVoice($requiredName)\n"
+        f"$s.Rate={profile['speech_rate']}\n"
+        f"$s.Volume={profile['volume']}\n"
         f"$s.SetOutputToWaveFile('{escape(wav)}')\n"
         "try { $s.Speak([System.IO.File]::ReadAllText("
         f"'{escape(text_file)}',[System.Text.Encoding]::UTF8)) }} finally {{ $s.Dispose() }}\n",
@@ -83,8 +112,8 @@ def _produce_narration(script: str, folder: Path, wav: Path) -> str:
     finally:
         ps.unlink(missing_ok=True)
     if not wav.is_file() or wav.stat().st_size < 5000:
-        raise RuntimeError("La synthèse vocale n'a pas produit de WAV utilisable.")
-    return "Synthèse vocale Windows SAPI (première voix française installée)"
+        raise RuntimeError("La voix verrouillée n'a pas produit de WAV utilisable.")
+    return f"{profile['provider']}:{profile['voice_name']} ({profile['language']})"
 
 
 def captions_for(script: str, duration: float) -> list[dict]:
@@ -192,7 +221,8 @@ def render(ctx: dict, folder: Path) -> str:
         raise ValueError("Le MVP accepte au maximum 2 400 caractères de narration.")
     write_text(folder, "narration.txt", script)
     wav = folder / "narration.wav"
-    voice_name = _produce_narration(script, folder, wav)
+    profile = load_voice_profile()
+    voice_name = _produce_narration(script, folder, wav, profile)
     duration = _duration(wav)
     if not 8 <= duration <= PREVIEW_LIMIT:
         raise RuntimeError(
@@ -220,12 +250,16 @@ def render(ctx: dict, folder: Path) -> str:
     write_json(folder, "stickman_report.json", {
         "engine": "Stickman Video Director / Autopilot B1",
         "skill_dir": str(skill), "voice": voice_name,
+        "narrator_key": profile["narrator_key"],
+        "voice_lock_applied": True,
+        "voice_approval_status": profile["approval_status"],
+        "voice_profile_sha256": hashlib.sha256(VOICE_PROFILE_PATH.read_bytes()).hexdigest(),
         "duration_seconds": round(duration, 3),
         "outputs": outputs, "subtitles_alignment": "ESTIMATED_NOT_FORCED_ALIGNED",
         "narration_source": "user" if explicitly_provided else "local_llm_or_fallback",
         "external_api_cost": 0, "youtube_upload": "DISABLED",
         "publication_ready": False,
-        "pending": ["écoute humaine", "relecture éditoriale et sources",
+        "pending": (["approbation de la voix permanente"] if profile["approval_status"] != "approved" else []) + ["écoute humaine", "relecture éditoriale et sources",
                     "vérification du timing des sous-titres",
                     "approbation de l'habillage Brain to Billions"],
     })
