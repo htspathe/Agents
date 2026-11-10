@@ -327,6 +327,9 @@ Ne démarre pas une synthèse vocale cloud ou une autre voix. Arrête-toi avant 
     request_path = folder / "stickman_request.md"
     if request_path.is_file():
         request = request_path.read_text(encoding="utf-8")
+        # Old missions used py -3, which may resolve to a denied WindowsApps alias.
+        # Keep their bridge instructions usable with the interpreter running this server.
+        request = request.replace('py -3 "', f'"{Path(sys.executable).resolve()}" "')
         pattern = re.compile(
             r"(?ms)^## (?:Narration obligatoire — Piper local|Blocage narration — Piper requis)\n.*?(?=^## |\Z)"
         )
