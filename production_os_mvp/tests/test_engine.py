@@ -12,6 +12,8 @@ import app
 import engine
 import agents
 import stickman_bridge
+import stickman_worker
+from unittest import mock
 
 
 class ProductionTests(unittest.TestCase):
@@ -91,6 +93,50 @@ class ProductionTests(unittest.TestCase):
         self.assertTrue((folder / "stickman_runtime_status.json").is_file())
         with self.assertRaises(ValueError):
             engine.decide_job(task["id"], "approve", "Approbation prématurée")
+
+
+    def test_stickman_worker_can_be_started_from_dashboard(self):
+        task = self.launch("youtube", "Comprendre la valorisation d'une entreprise")
+        with mock.patch.object(stickman_worker, "codex_status", return_value={
+            "installed": True, "path": "codex.exe", "version": "test"
+        }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}), \
+             mock.patch.object(stickman_worker.subprocess, "Popen") as popen, \
+             mock.patch.object(stickman_worker, "_pid_alive", return_value=True):
+            popen.return_value.pid = 424242
+            result = stickman_worker.start_worker(task["id"], "start")
+        self.assertEqual(result["state"], "starting")
+        self.assertEqual(result["phase"], "start")
+        command = popen.call_args.args[0]
+        self.assertIn("run", command)
+        self.assertIn(task["id"], command)
+        state = stickman_worker.get_status(task["id"])
+        self.assertEqual(state["state"], "starting")
+
+    def test_stickman_worker_codex_command_keeps_sandbox(self):
+        args = stickman_worker.build_codex_args("start", Path(engine.ROOT))
+        self.assertIn("--sandbox", args)
+        self.assertIn("workspace-write", args)
+        self.assertIn("--ask-for-approval", args)
+        self.assertIn("never", args)
+        self.assertNotIn("--yolo", args)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
+        self.assertEqual(args[-3:], ["exec", "--json", "-"])
+
+    def test_stickman_worker_rejects_director_route(self):
+        task = self.launch("youtube", "Test route Director", stickman_mode="director", stickman_style="A6")
+        with mock.patch.object(stickman_worker, "codex_status", return_value={
+            "installed": True, "path": "codex.exe", "version": "test"
+        }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}):
+            with self.assertRaisesRegex(ValueError, "Autopilot uniquement"):
+                stickman_worker.start_worker(task["id"], "start")
+
+    def test_stickman_worker_resume_requires_preview_approval(self):
+        task = self.launch("youtube", "Test verrou d'approbation")
+        with mock.patch.object(stickman_worker, "codex_status", return_value={
+            "installed": True, "path": "codex.exe", "version": "test"
+        }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}):
+            with self.assertRaisesRegex(ValueError, "statut actuel awaiting_external"):
+                stickman_worker.start_worker(task["id"], "resume")
 
     def test_library_indexes_artifacts_and_filters(self):
         task = self.launch("youtube", "Comprendre le DCF et sa valorisation")
