@@ -16,6 +16,7 @@ import agents
 import engine
 import engine_manager
 import quota_monitor
+import quota_monitor
 
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 SESSION_RE = re.compile(r"^[0-9a-f-]{30,40}$")
@@ -332,23 +333,28 @@ def _run_provider(
                 return
             settings = engine_manager.get_settings()
             threshold = settings.get("switch_at_remaining_percent", 5)
-            interval = settings.get("quota_check_interval_seconds", 15)
+            interval = 15
+            if not settings.get("auto_fallback", True):
+                return
             while not monitor_stop.is_set():
-                quota = engine_manager.get_provider_quota(provider, refresh=(provider == "codex"))
+                low_quota, quota = quota_monitor.quota_exhausted_soon(
+                    provider, threshold, refresh=True
+                )
                 if quota.get("remaining_percent") is not None:
                     latest = _read_state(folder)
                     latest["quota"] = quota
                     _write_state(folder, latest)
-                    if engine_manager.quota_should_switch(quota, threshold):
-                        quota_trigger.update(quota)
-                        message = (
-                            f"{provider} : {quota['remaining_percent']:.1f}% de quota restant "
-                            f"(seuil {threshold}%). Arrêt de l'étape et bascule."
-                        )
-                        with _log_path(folder).open("a", encoding="utf-8") as quota_log:
-                            quota_log.write(f"\n[{now()}] {message}\n")
-                        _stop_provider_process(process)
-                        return
+                if low_quota:
+                    quota_trigger.update(quota)
+                    remaining = quota.get("remaining_percent")
+                    message = (
+                        f"{provider} : {remaining:.1f}% de quota restant "
+                        f"(seuil {threshold}%). Arrêt de l'étape et bascule."
+                    )
+                    with _log_path(folder).open("a", encoding="utf-8") as quota_log:
+                        quota_log.write(f"\n[{now()}] {message}\n")
+                    _stop_provider_process(process)
+                    return
                 if monitor_stop.wait(interval):
                     return
 
@@ -567,29 +573,6 @@ def run_worker(job_id: str, phase: str) -> int:
                         continue
 
                 ran_provider = True
-                threshold = settings.get("switch_at_remaining_percent", 5)
-                if provider == "codex":
-                    quota = engine_manager.get_provider_quota("codex", refresh=True)
-                    if engine_manager.quota_should_switch(quota, threshold):
-                        fallback_history.append({
-                            "provider": provider, "state": "quota_threshold",
-                            "reason": f"{quota['remaining_percent']:.1f}% restants (seuil {threshold}%)."
-                        })
-                        fallback_from = provider
-                        current.update({
-                            "state": "running", "provider": provider,
-                            "quota": quota, "fallback_history": fallback_history,
-                            "message": f"Quota Codex à {quota['remaining_percent']:.1f}%. Bascule préventive."
-                        })
-                        _write_state(folder, current)
-                        engine.add_event(job_id, "stickman_worker", "quota_threshold",
-                                         f"Codex à {quota['remaining_percent']:.1f}% de quota restant ; bascule avant épuisement.")
-                        continue
-                elif provider == "antigravity":
-                    hook = engine_manager.ensure_antigravity_quota_hook()
-                    engine_manager.clear_antigravity_quota()
-                    current["quota_monitor"] = hook
-                    _write_state(folder, current)
                 session_id = provider_sessions.get(provider)
                 try:
                     code, session_id, output_tail = _run_provider(
