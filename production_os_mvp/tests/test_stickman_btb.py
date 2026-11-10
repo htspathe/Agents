@@ -44,9 +44,11 @@ class StickmanBridgeTests(unittest.TestCase):
         profile = stickman_btb.load_voice_profile()
         self.assertEqual(profile["brand"], "Brain to Billions")
         self.assertEqual(profile["narrator_key"], "brain-to-billions-main")
-        self.assertEqual(profile["voice_name"], "Microsoft Paul")
-        self.assertEqual(profile["provider"], "windows_sapi")
-        self.assertEqual(profile["approval_status"], "provisional")
+        self.assertEqual(profile["voice_name"], "Confident Male — Sample 04")
+        self.assertEqual(profile["provider"], "qwen3_tts_voice_clone")
+        self.assertEqual(profile["voice_id"], "hangry-labs/confident_male/sample04")
+        self.assertEqual(profile["languages"], {"fr": "French", "en": "English"})
+        self.assertEqual(profile["approval_status"], "approved")
 
     def test_voice_profile_rejects_empty_identity(self):
         profile = stickman_btb.load_voice_profile()
@@ -65,6 +67,18 @@ class StickmanBridgeTests(unittest.TestCase):
                     stickman_btb._produce_narration(
                         "Un test de voix", Path(tmp), Path(tmp) / "narration.wav", profile
                     )
+
+    def test_reference_hash_pinned_and_model_locked(self):
+        profile = stickman_btb.load_voice_profile()
+        self.assertEqual(profile["reference_sha256"], "107f67576b04f5c0b050327863c198eceb9bab297daf061e4138912595183368")
+        self.assertEqual(profile["model_id"], "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+
+    def test_unsupported_language_rejected_before_inference(self):
+        profile = stickman_btb.load_voice_profile()
+        from qwen_btb_voice import synthesize
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "Langue non autorisée"):
+                synthesize("Hello world. This is a test.", Path(tmp) / "test.wav", "es", profile)
 
     def test_missing_skill_is_explicit(self):
         self.assertTrue(callable(stickman_btb.find_skill))
