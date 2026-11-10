@@ -246,7 +246,7 @@ def video(ctx, folder):
 - Pont Production OS : {bridge_cli}
 - Chaîne : {channel}
 - Sujet : {ctx['brief']}
-- Mode : {"B · Autopilot" if mode == 'autopilot' else "A · Director"}
+- Mode : {'B · Autopilot' if mode == 'autopilot' else 'A · Director'}
 - Style Stickman : {style}
 - Format : {ratio} natif
 - Durée cible : {duration} secondes
