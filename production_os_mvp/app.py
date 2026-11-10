@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
-from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS
+from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
 MAX_UPLOAD = 300 * 1024 * 1024
@@ -70,7 +70,8 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, {"jobs": engine.list_jobs(), "stats": engine.stats(),
                                "agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
                                "workflows": LABELS, "ffmpeg_installed": shutil.which("ffmpeg") is not None,
-                               "ollama_model": os.environ.get("OLLAMA_MODEL") or None})
+                               "ollama_model": os.environ.get("OLLAMA_MODEL") or None,
+                               "stickman": stickman_status()})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -156,6 +157,35 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/decision", path)
+        if m:
+            if length > 5000:
+                return self.respond(413, {"error": "Décision trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                decision = engine.decide_job(
+                    m.group(1),
+                    data.get("action", ""),
+                    data.get("note", ""),
+                    data.get("target_agent", "orchestrator")
+                )
+                if decision["action"] == "request_changes":
+                    revision_id = engine.revise_job(m.group(1))
+                    engine.run_async(revision_id)
+                    return self.respond(202, {
+                        **decision,
+                        "revision_job_id": revision_id,
+                        "revision_status": "queued",
+                        "message": "La correction a été transmise à l'agent choisi ; une nouvelle mission a été créée."
+                    })
+                return self.respond(200, {
+                    **decision,
+                    "message": "Décision enregistrée. Aucune publication externe n'a été déclenchée."
+                })
+            except (ValueError, TypeError) as exc:
+                return self.respond(400, {"error": str(exc)[:250]})
         if path == "/api/upload":
             original = Path(self.headers.get("X-Filename", "video.mp4")).name
             suffix = Path(original).suffix.lower()
