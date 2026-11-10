@@ -235,6 +235,7 @@ def video(ctx, folder):
             "Pour le premier pilote en B1, conserver la grammaire dessinée à la main B1 ; les références B5/A6 "
             "servent uniquement d'inspiration de marque, sans fusionner leurs contrats techniques ou copier leurs personnages."
         )
+        bridge_cli = str(ROOT / "stickman_bridge.py")
         request = f"""# Production OS vers Stickman Video Director
 
 ## Mission
@@ -255,8 +256,16 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
 2. Direction de marque : {signature}
 3. Préserve le sens du sujet, la continuité du personnage, le rythme de narration, des sous-titres synchronisés et des effets sonores pertinents. Conçois le ratio demandé nativement, sans recadrer une vidéo paysage pour prétendre obtenir un vrai portrait.
 4. Pour Autopilot, vérifie d'abord la configuration locale, les fournisseurs disponibles et leurs coûts. N'effectue aucun appel payant, achat de crédits ou abonnement sans autorisation explicite. Si aucun fournisseur gratuit/local utilisable n'est configuré, arrête-toi et fournis la liste exacte des prérequis manquants.
-5. Prépare un aperçu d'environ 20 secondes avec son et sous-titres, puis arrête la production complète pour revue humaine. Après approbation explicite de cet aperçu, produis le film complet.
-6. Place le MP4 final, les sous-titres, le projet source, les références et les rapports QA dans stickman_project/output/ ou dans le dossier de mission. Ne publie rien sur YouTube.
+5. Prépare un aperçu d'environ 20 secondes avec son et sous-titres. Vérifie qu'il est lisible et synchronisé, puis importe-le dans Production OS avec :
+   py -3 "{bridge_cli}" preview-ready {ctx.get("job_id", "")} --file "stickman_project/output/preview.mp4"
+   Cette commande fait passer la mission à "Aperçu à valider". Arrête-toi et demande à l'utilisateur de valider l'aperçu dans le dashboard. Ne lance jamais le rendu complet avant cette approbation.
+6. Après que l'utilisateur a approuvé l'aperçu, vérifie :
+   py -3 "{bridge_cli}" status {ctx.get("job_id", "")}
+   Ne continue que si le statut est "render_authorized". Pour B1-B4, enregistre l'approbation dans le runtime avec node scripts/autopilot.mjs approve "stickman_project/project.json" --note "Aperçu approuvé dans Production OS", puis lance le rendu complet. Pour B5, suis sa route character-explainer dédiée ; pour Director/A6, fournis les prompts et le rendu selon le contrat Director, sans utiliser les commandes Autopilot B1-B4.
+7. Quand le MP4 final et le fichier de sous-titres SRT/VTT sont prêts, importe-les :
+   py -3 "{bridge_cli}" final-ready {ctx.get("job_id", "")} --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
+   La mission passe alors à "À valider" pour la revue du rendu final. Ne publie rien sur YouTube.
+8. Si Production OS affiche "Corrections demandées" ou "Rejetée", arrête cette ancienne mission. Pour une correction, reprends uniquement la nouvelle mission créée par Production OS.
 
 ## Fichiers de départ
 - Script/contenu : content.md
@@ -279,7 +288,8 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
 - Visuels spécifiques à l'idée financière, pas une succession de pictogrammes génériques.
 - Chiffres, formules, exemples et affirmations vérifiés et sourcés.
 - Audio intelligible, musique/SFX sous la voix, aucun silence involontaire.
-- Aperçu lu et écouté avant rendu complet.
+- Aperçu lu et écouté puis approuvé dans Production OS avant rendu complet.
+- MP4 final et sous-titres importés via stickman_bridge.py avant la revue finale.
 - Aucun upload, publication ou dépense sans validation explicite.
 """
         write_text(folder, "stickman_request.md", request)
