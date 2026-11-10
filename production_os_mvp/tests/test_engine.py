@@ -37,17 +37,25 @@ class ProductionTests(unittest.TestCase):
         engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = root, root, root, root, root
         engine.DB = root / "test.sqlite3"
         engine_manager.invalidate_status_cache()
+        piper_tts.invalidate_status_cache()
         engine.init()
 
     @classmethod
     def tearDownClass(cls):
         engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = cls.old
         engine_manager.invalidate_status_cache()
+        piper_tts.invalidate_status_cache()
         cls.tmp.cleanup()
 
     def launch(self, workflow, brief="Exemple de production contrôlée", **kwargs):
         job_id = engine.new_job({"workflow": workflow, "brief": brief, **kwargs})
-        engine.run_job(job_id)
+        if workflow == "youtube":
+            with mock.patch.object(piper_tts, "get_status", return_value={
+                "ready": False, "note": "Piper absent dans les tests unitaires"
+            }):
+                engine.run_job(job_id)
+        else:
+            engine.run_job(job_id)
         return engine.job_detail(job_id)
 
 
