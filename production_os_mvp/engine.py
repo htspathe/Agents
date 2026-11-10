@@ -1,6 +1,7 @@
 """Persistent orchestrator and task state with SQLite. No credentials needed."""
 from __future__ import annotations
 import json
+import shutil
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +37,9 @@ def init():
         CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,
           job_id TEXT NOT NULL, agent TEXT NOT NULL, state TEXT NOT NULL,
           message TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY AUTOINCREMENT,
+          job_id TEXT NOT NULL, action TEXT NOT NULL, note TEXT NOT NULL,
+          target_agent TEXT NOT NULL, created TEXT NOT NULL);
         """)
         db.commit()
 
@@ -66,9 +70,44 @@ def new_job(data: dict) -> str:
     if status_count["running"] + status_count["queued"] >= 10:
         raise ValueError("File de missions pleine : maximum 10 en attente/en exécution")
     job_id = uuid.uuid4().hex[:12]
+    start_agent = safe_text(data.get("start_agent"), 40) or "orchestrator"
+    if start_agent != "orchestrator" and start_agent not in WORKFLOW_STEPS[typ]:
+        raise ValueError("Agent de reprise incompatible avec ce workflow")
+    revision_of = safe_text(data.get("revision_of"), 12)
+    if revision_of:
+        parent = get_job(revision_of)
+        if not parent or parent["workflow"] != typ:
+            raise ValueError("Mission source de la révision introuvable")
+    stickman_enabled = typ == "youtube" and bool(data.get("stickman_enabled", True))
+    stickman_mode = str(data.get("stickman_mode", "autopilot")).lower()
+    stickman_style = str(data.get("stickman_style", "B1")).upper()
+    aspect_ratio = str(data.get("aspect_ratio", "9:16"))
+    if typ == "youtube" and stickman_enabled:
+        if stickman_mode not in {"autopilot", "director"}:
+            raise ValueError("Mode Stickman invalide")
+        if stickman_style not in {"B1", "B2", "B3", "B4", "B5", "A6"}:
+            raise ValueError("Style Stickman invalide")
+        if stickman_mode == "autopilot" and stickman_style == "A6":
+            raise ValueError("A6 utilise le mode Director, pas Autopilot")
+        if stickman_mode == "director" and not stickman_style.startswith("A"):
+            raise ValueError("Director nécessite un style A")
+        if aspect_ratio not in {"9:16", "16:9"}:
+            raise ValueError("Format vidéo invalide")
+    try:
+        stickman_duration = int(data.get("stickman_duration", 60))
+    except (TypeError, ValueError):
+        raise ValueError("Durée Stickman invalide")
+    if typ == "youtube" and stickman_enabled and not 15 <= stickman_duration <= 3600:
+        raise ValueError("La durée Stickman doit être comprise entre 15 et 3600 secondes")
     clean = {"workflow": typ, "brief": brief, "source_file": safe_text(data.get("source_file"), 170),
              "rights_confirmed": bool(data.get("rights_confirmed")),
-             "start": data.get("start", 0), "end": data.get("end", 10)}
+             "start": data.get("start", 0), "end": data.get("end", 10),
+             "revision_of": revision_of, "correction_request": safe_text(data.get("correction_request"), 1000),
+             "start_agent": start_agent, "stickman_enabled": stickman_enabled,
+             "stickman_mode": stickman_mode, "stickman_style": stickman_style,
+             "aspect_ratio": aspect_ratio, "stickman_duration": stickman_duration,
+             "language": safe_text(data.get("language", "fr"), 12) or "fr",
+             "channel": safe_text(data.get("channel", "Brain to Billions"), 80) or "Brain to Billions"}
     with LOCK, connect() as db:
         db.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)",
                    (job_id, typ, brief, json.dumps(clean), "queued", now(), now(), None))
@@ -88,7 +127,11 @@ def run_job(job_id: str) -> None:
     set_status(job_id, "running")
     add_event(job_id, "orchestrator", "running", "Workflow démarré")
     try:
-        for agent in WORKFLOW_STEPS[job["workflow"]]:
+        steps = WORKFLOW_STEPS[job["workflow"]]
+        start_agent = ctx.get("start_agent", "orchestrator")
+        if start_agent != "orchestrator":
+            steps = steps[steps.index(start_agent):]
+        for agent in steps:
             add_event(job_id, agent, "running", "Exécution")
             artifact = HANDLERS[agent](ctx, folder)
             add_event(job_id, agent, "done", f"Livrable : {artifact}")
@@ -213,13 +256,83 @@ def list_library(query="", workflow="", kind="", status=""):
         }
     }
 
+def decide_job(job_id, action, note="", target_agent="orchestrator"):
+    actions = {"approve": "approved", "request_changes": "changes_requested", "reject": "rejected"}
+    if action not in actions:
+        raise ValueError("Décision inconnue")
+    note = safe_text(note, 1000)
+    if action in {"request_changes", "reject"} and len(note) < 4:
+        raise ValueError("Ajoute un motif ou des consignes (4 caractères minimum)")
+    job = get_job(job_id)
+    if not job:
+        raise ValueError("Mission introuvable")
+    if job["status"] not in {"awaiting_approval", "changes_requested"}:
+        raise ValueError("Cette mission n'est pas dans un état permettant une décision")
+    target_agent = safe_text(target_agent, 40) or "orchestrator"
+    if action == "request_changes" and target_agent != "orchestrator" and target_agent not in WORKFLOW_STEPS[job["workflow"]]:
+        raise ValueError("L'agent choisi ne participe pas à ce workflow")
+    status = actions[action]
+    with LOCK, connect() as db:
+        current = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not current or current["status"] not in {"awaiting_approval", "changes_requested"}:
+            raise ValueError("Le statut de la mission a changé ; actualise la page")
+        db.execute("UPDATE jobs SET status=?,updated=?,error=NULL WHERE id=?", (status, now(), job_id))
+        db.execute("INSERT INTO decisions(job_id,action,note,target_agent,created) VALUES(?,?,?,?,?)",
+                   (job_id, action, note, target_agent, now()))
+        message = {"approve": "Livrable approuvé par revue humaine (aucune publication déclenchée).",
+                   "request_changes": f"Correction demandée à {target_agent}: {note}",
+                   "reject": f"Livrable rejeté: {note}"}[action]
+        db.execute("INSERT INTO events(job_id,agent,state,message,created) VALUES(?,?,?,?,?)",
+                   (job_id, "human_review", status, message[:1100], now()))
+        db.commit()
+    return {"id": job_id, "status": status, "action": action, "target_agent": target_agent, "note": note}
+
+
+def revise_job(job_id):
+    parent = get_job(job_id)
+    if not parent or parent["status"] != "changes_requested":
+        raise ValueError("Aucune correction en attente pour cette mission")
+    with connect() as db:
+        decision = db.execute(
+            "SELECT note,target_agent FROM decisions WHERE job_id=? AND action='request_changes' ORDER BY id DESC LIMIT 1",
+            (job_id,)
+        ).fetchone()
+    if not decision:
+        raise ValueError("Consignes de correction introuvables")
+    original = json.loads(parent["input_json"])
+    data = {key: value for key, value in original.items()
+            if key not in {"revision_of", "correction_request", "start_agent"}}
+    data.update({"revision_of": job_id, "correction_request": decision["note"],
+                 "start_agent": decision["target_agent"] or "orchestrator"})
+    new_id = new_job(data)
+    source = (ROOT / "outputs" / job_id).resolve()
+    target = (ROOT / "outputs" / new_id).resolve()
+    output_root = (ROOT / "outputs").resolve()
+    if source.parent != output_root or target.parent != output_root:
+        raise ValueError("Dossier de révision invalide")
+    target.mkdir(parents=True, exist_ok=True)
+    if source.is_dir():
+        for item in source.iterdir():
+            if item.is_file() and not item.is_symlink():
+                shutil.copy2(item, target / item.name)
+    add_event(new_id, "orchestrator", "revision", f"Révision de {job_id}, reprise à {data['start_agent']}.")
+    return new_id
+
+
 def job_detail(job_id):
     job = get_job(job_id)
     if not job:
         return None
+    input_data = json.loads(job["input_json"])
     with connect() as db:
         rows = db.execute("SELECT agent,state,message,created FROM events WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
+        decisions = db.execute("SELECT action,note,target_agent,created FROM decisions WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
     job["events"] = [dict(r) for r in rows]
+    job["decisions"] = [dict(r) for r in decisions]
+    job["workflow_agents"] = WORKFLOW_STEPS[job["workflow"]]
+    job["revision_of"] = input_data.get("revision_of") or None
+    job["correction_request"] = input_data.get("correction_request") or None
+    job["start_agent"] = input_data.get("start_agent", "orchestrator")
     folder = ROOT / "outputs" / job_id
     job["files"] = [{"name": p.name, "size": p.stat().st_size} for p in sorted(folder.iterdir()) if p.is_file()] if folder.is_dir() else []
     job.pop("input_json", None)
@@ -231,5 +344,8 @@ def stats():
     return {"total": len(jobs), "queued": sum(x["status"] == "queued" for x in jobs),
             "running": sum(x["status"] == "running" for x in jobs),
             "awaiting_approval": sum(x["status"] == "awaiting_approval" for x in jobs),
+            "approved": sum(x["status"] == "approved" for x in jobs),
+            "changes_requested": sum(x["status"] == "changes_requested" for x in jobs),
+            "rejected": sum(x["status"] == "rejected" for x in jobs),
             "failed": sum(x["status"] == "failed" for x in jobs),
             "by_workflow": {w: sum(x["workflow"] == w for x in jobs) for w in WORKFLOW_STEPS}}
