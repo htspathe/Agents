@@ -1,6 +1,6 @@
-# Production OS — MVP local V0.1
+# Production OS — MVP local V0.2
 
-**Statut : prototype fonctionnel testé localement, pas plateforme de production publique.**
+**Statut : MVP local avec worker Codex/Stickman intégré au dashboard ; le premier test de bout en bout reste à valider sur le PC Windows cible.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
 
@@ -13,7 +13,7 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
 - **Content Strategist** : brouillons générés avec Ollama si configuré ; sans Ollama, gabarits déterministes et clairement signalés.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
-- **Video Production + Stickman** : le workflow YouTube crée une passerelle Stickman (`stickman_request.md`, configuration, statut runtime et projet initial si le Skill est installé). Le rendu complet reste exécuté par un agent local compatible Skill (Codex / Claude Code), pas par le serveur Python seul.
+- **Video Production + Stickman** : le workflow YouTube prépare la mission, puis le worker local lance Codex depuis le dashboard, importe l'aperçu, attend l'approbation humaine et reprend la même session pour le rendu final. Le worker n'effectue aucun achat ni publication.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -66,38 +66,25 @@ Le script clone le dépôt officiel dans `tools/stickman-video-director`, instal
 
 Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique des dépendances manquantes, corrige-les puis relance le script. Après installation, redémarre Production OS pour actualiser l'état affiché sur le dashboard.
 
-### Utiliser Stickman dans Production OS
+### Utiliser Stickman depuis le dashboard
 
-1. Choisis `YouTube` dans Zone de production.
-2. Sélectionne `Autopilot` et le style `B1` pour le premier pilote vertical Brain to Billions (9:16, 60 secondes, français).
-3. Lance la mission. Production OS crée `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json` et, si le runtime local est prêt, un projet Stickman initial. La mission passe à `En attente Stickman`, pas à `À valider`.
-4. Ouvre `production_os_mvp` comme workspace dans Codex ou Claude Code (c'est là que le Skill est installé), puis navigue vers `outputs/IDENTIFIANT_MISSION`. Demande à l'agent de lire et d'exécuter `stickman_request.md`. Le Skill Autopilot a besoin d'un agent capable de lire/écrire des fichiers et d'exécuter des commandes.
-5. Fais générer un aperçu d'environ 20 secondes avec son et sous-titres. Depuis le dossier de mission, l'agent signale l'aperçu à Production OS :
+1. Démarre Production OS normalement avec `py -3 app.py`, puis ouvre `http://127.0.0.1:8765`.
+2. Crée une mission YouTube. Pour le premier pilote Brain to Billions, choisis `Autopilot`, `B1`, `9:16`, `60 secondes` et le français.
+3. Quand la mission passe à `En attente Stickman`, ouvre son détail et clique sur **Démarrer l'agent local**. Le dashboard lance le worker Windows en arrière-plan ; tu n'as pas à ouvrir Codex ni un terminal.
+4. Le worker exécute `codex exec` depuis le dossier de la mission avec le sandbox `workspace-write`. Il lit le brief Stickman, le Skill installé et ses références, puis prépare l'aperçu. Le journal et l'état du worker restent visibles dans le détail de mission.
+5. Quand `stickman_preview.mp4` arrive, le dashboard affiche **Lire l'aperçu**. Visionne et écoute l'aperçu, puis clique sur **Approuver l'aperçu et autoriser le rendu**.
+6. L'approbation déclenche automatiquement la reprise de la même session Codex. Si la reprise ne démarre pas, le panneau affiche l'erreur et propose **Reprendre le rendu complet**.
+7. Le worker importe le MP4 final et les sous-titres SRT/VTT. La mission passe à `Rendu final à valider` ; approuve, corrige ou rejette depuis le dashboard.
+8. Les fichiers, journaux et rapports restent disponibles dans **Mes productions**. Une approbation finale ne publie rien sur YouTube.
 
-```powershell
-py -3 ..\..\stickman_bridge.py preview-ready IDENTIFIANT_MISSION --file "stickman_project/output/preview.mp4"
-```
+**Prérequis et coûts :**
+- Codex CLI doit être installé et connecté. Le dashboard détecte le binaire, mais l'authentification n'est vérifiée qu'au premier lancement. Si nécessaire, définis `STICKMAN_CODEX_BIN` vers le chemin exact de `codex.cmd` ou `codex.exe`.
+- Le worker utilise le quota de ton compte Codex lorsque le fournisseur par défaut est utilisé. Ce n'est pas une API gratuite illimitée. Pour tenter une exécution locale via Ollama, définis `STICKMAN_CODEX_PROVIDER=ollama` et, si nécessaire, `STICKMAN_CODEX_MODEL` avant de démarrer Production OS ; le modèle doit déjà être installé et compatible avec Codex.
+- La génération d'images et de voix dépend des fournisseurs que le Skill peut réellement utiliser. Le worker n'achète aucun crédit, n'ouvre aucun abonnement et n'effectue aucun appel payant. S'il ne trouve pas de fournisseur local/gratuit déjà configuré, il doit produire un rapport de blocage au lieu de fabriquer une vidéo.
+- L'exécution Codex nécessite une connexion Internet lorsqu'elle utilise le service Codex avec ton compte. Le mode Ollama est la voie locale, sous réserve de la compatibilité du modèle et des outils.
+- Le worker web prend en charge Autopilot B1 à B4. B5 et Director/A6 ont des contrats et rendus spécifiques ; ils restent sur leur route dédiée tant que leur automatisation n'est pas intégrée.
+- Le worker utilise le sandbox `workspace-write`, sans option `--yolo` ni contournement du sandbox. Il ne publie pas, n'achète rien et ne modifie aucun compte externe.
 
-6. La mission passe à `Aperçu à valider`. Écoute et regarde le fichier dans `Mes productions`, puis clique sur **Approuver l'aperçu et autoriser le rendu**. L'agent vérifie ensuite le feu vert :
-
-```powershell
-py -3 ..\..\stickman_bridge.py status IDENTIFIANT_MISSION
-```
-
-7. Si le statut est `render_authorized`, l'agent exécute la commande d'approbation du Skill puis le rendu complet. Après génération du MP4 et du SRT/VTT, il les remet à Production OS :
-
-```powershell
-py -3 ..\..\stickman_bridge.py final-ready IDENTIFIANT_MISSION --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
-```
-
-8. La mission passe à `Rendu final à valider`. Tu peux alors approuver le rendu, demander une correction à l'agent choisi ou rejeter la production. Une approbation finale ne publie rien.
-9. Récupère le MP4, les sous-titres et le projet dans `Mes productions`.
-
-**Limites à connaître :**
-- La passerelle, le projet initial et le pont d'états preview/final sont intégrés ; le serveur Python ne pilote pas lui-même un agent Codex/Claude. L'agent local exécute le Skill et appelle `stickman_bridge.py` aux étapes indiquées.
-- Les services de génération d'images et de voix peuvent demander une clé ou des crédits. Aucun appel payant, abonnement ou achat de crédits n'est déclenché sans autorisation.
-- B1 est le point de départ recommandé pour le format vertical. B5 possède une route spécifique et son portrait demande une nouvelle validation ; A6 utilise Director et un fournisseur vidéo distinct.
-- La direction Brain to Billions est originale : personnage récurrent, explications financières et accents ambrés. Les références B1/B5/A6 ne doivent pas conduire à copier un personnage ou à mélanger leurs contrats techniques.
 
 ## Activer Ollama (facultatif)
 
@@ -128,6 +115,7 @@ production_os_mvp/
   app.py                # Serveur HTTP local + dashboard + API
   engine.py             # SQLite, orchestration, états et journal
   stickman_bridge.py    # Synchronise aperçu, autorisation de rendu et MP4 final
+  stickman_worker.py    # Lance/reprend Codex en arrière-plan depuis le dashboard
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
