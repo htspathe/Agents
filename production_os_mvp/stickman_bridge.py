@@ -57,7 +57,7 @@ def _update_generated_reports(root: Path, manifest_status: str, extra: dict) -> 
                 for item in root.rglob("*")
                 if item.is_file() and not item.is_symlink()
             )
-            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         except (OSError, ValueError, TypeError):
             pass
 
