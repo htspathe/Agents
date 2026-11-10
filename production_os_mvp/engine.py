@@ -419,6 +419,11 @@ def job_detail(job_id):
     job["revision_of"] = input_data.get("revision_of") or None
     job["correction_request"] = input_data.get("correction_request") or None
     job["start_agent"] = input_data.get("start_agent", "orchestrator")
+    job["stickman_enabled"] = bool(input_data.get("stickman_enabled", job["workflow"] == "youtube"))
+    job["stickman_mode"] = input_data.get("stickman_mode", "autopilot")
+    job["stickman_style"] = input_data.get("stickman_style", "B1")
+    job["aspect_ratio"] = input_data.get("aspect_ratio", "9:16")
+    job["stickman_duration"] = input_data.get("stickman_duration", 60)
     folder = (ROOT / "outputs" / job_id).resolve()
     job["files"] = [
         {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
