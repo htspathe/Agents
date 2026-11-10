@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 import sys
 
@@ -15,6 +16,7 @@ import stickman_bridge
 import stickman_worker
 import engine_manager
 import quota_monitor
+import piper_tts
 from unittest import mock
 
 
@@ -22,7 +24,7 @@ class ProductionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="production-os-test-")
-        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT)
+        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT)
         root = Path(cls.tmp.name)
         (root / "knowledge").mkdir()
         (root / "samples").mkdir()
@@ -32,14 +34,14 @@ class ProductionTests(unittest.TestCase):
         for file in (source / "knowledge").glob("*.md"):
             shutil.copy2(file, root / "knowledge" / file.name)
         shutil.copy2(source / "samples" / "clogz_catalog_demo.csv", root / "samples" / "clogz_catalog_demo.csv")
-        engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT = root, root, root, root
+        engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = root, root, root, root, root
         engine.DB = root / "test.sqlite3"
         engine_manager.invalidate_status_cache()
         engine.init()
 
     @classmethod
     def tearDownClass(cls):
-        engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT = cls.old
+        engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = cls.old
         engine_manager.invalidate_status_cache()
         cls.tmp.cleanup()
 
@@ -95,6 +97,10 @@ class ProductionTests(unittest.TestCase):
         self.assertTrue((folder / "stickman_request.md").is_file())
         self.assertTrue((folder / "stickman_job.json").is_file())
         self.assertTrue((folder / "stickman_runtime_status.json").is_file())
+        self.assertTrue((folder / "narration.md").is_file())
+        self.assertTrue((folder / "narration_blocker.md").is_file())
+        self.assertFalse((folder / "narration.wav").exists())
+        self.assertIn("Piper", (folder / "stickman_request.md").read_text(encoding="utf-8"))
         with self.assertRaises(ValueError):
             engine.decide_job(task["id"], "approve", "Approbation prématurée")
 
