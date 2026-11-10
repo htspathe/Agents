@@ -248,6 +248,60 @@ def _write_json(path, data):
     os.replace(temp, path)
 
 
+
+
+def _update_mission_files(folder, info):
+    """Keep the job manifest and already-created Stickman request in sync with Piper."""
+    ready = bool(info.get("ready", True))
+    voice = info.get("voice", get_settings()["voice"])
+    if ready:
+        block = f"""## Narration obligatoire — Piper local
+- Fournisseur : Piper TTS local, hors ligne
+- Voix fixe de la chaîne : {voice}
+- Fichier audio de référence : {(folder / "narration.wav").resolve()}
+- Copie dans le projet Stickman : stickman_project/assets/audio/narration.wav
+- Texte prononcé exact : {(folder / "narration.md").resolve()}
+- Métadonnées et attribution : narration_metadata.json et voice_attribution.md
+- Utilise exactement ce WAV comme narration principale. Ne génère pas une seconde voix et ne remplace pas le timbre.
+- L'aperçu utilise les 20 premières secondes de ce même audio ; le rendu final utilise le WAV complet.
+- Aligne les sous-titres sur l'audio réel. Ne simule jamais une synchronisation.
+"""
+    else:
+        block = f"""## Blocage narration — Piper requis
+Piper n'est pas prêt pour cette mission.
+Diagnostic : {info.get('note', 'configuration Piper requise')}
+Fichier de diagnostic : narration_blocker.md
+Ne démarre pas une synthèse vocale cloud ou une autre voix. Arrête-toi avant la génération de l'aperçu audio et signale ce prérequis.
+"""
+    request_path = folder / "stickman_request.md"
+    if request_path.is_file():
+        request = request_path.read_text(encoding="utf-8")
+        pattern = re.compile(
+            r"(?ms)^## (?:Narration obligatoire — Piper local|Blocage narration — Piper requis)\n.*?(?=^## |\Z)"
+        )
+        if pattern.search(request):
+            request = pattern.sub(lambda _match: block.rstrip() + "\n\n", request, count=1)
+        elif "## Consigne d'exécution" in request:
+            request = request.replace("## Consigne d'exécution", block.rstrip() + "\n\n## Consigne d'exécution", 1)
+        else:
+            request = request.rstrip() + "\n\n" + block
+        request_path.write_text(request, encoding="utf-8")
+    manifest_path = folder / "stickman_job.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(manifest, dict):
+                manifest.update({
+                    "narration_provider": "piper",
+                    "narration_voice": voice,
+                    "narration_audio": "narration.wav" if ready else None,
+                    "narration_ready": ready,
+                })
+                _write_json(manifest_path, manifest)
+        except (OSError, ValueError, TypeError):
+            pass
+
+
 def _stage_for_stickman(folder):
     if not (folder / "narration.wav").is_file():
         return
@@ -271,7 +325,9 @@ def prepare_job_narration(folder, ctx, force=False):
         note = ("Aucune section de narration dédiée n'a été trouvée dans content.md.\n"
                 "Le Content Strategist doit produire une section « Voix off intégrale » avant Piper.\n")
         (folder / "narration_blocker.md").write_text(note, encoding="utf-8")
-        return {"ready": False, "note": note.strip(), "voice": get_settings()["voice"]}
+        info = {"ready": False, "note": note.strip(), "voice": get_settings()["voice"]}
+        _update_mission_files(folder, info)
+        return info
     settings, status = get_settings(), get_status(refresh=True)
     (folder / "narration.md").write_text(narration + "\n", encoding="utf-8")
     if not status["ready"]:
@@ -279,7 +335,9 @@ def prepare_job_narration(folder, ctx, force=False):
                 f"- Voix demandée : {settings['voice']}\n- Diagnostic : {status['note']}\n"
                 "- Installer Piper et télécharger le modèle vocal, puis relancer Stickman.\n")
         (folder / "narration_blocker.md").write_text(note, encoding="utf-8")
-        return {"ready": False, "note": status["note"], "voice": settings["voice"]}
+        info = {"ready": False, "note": status["note"], "voice": settings["voice"]}
+        _update_mission_files(folder, info)
+        return info
     script_hash = hashlib.sha256(narration.encode("utf-8")).hexdigest()
     audio_path, metadata_path = folder / "narration.wav", folder / "narration_metadata.json"
     if not force and audio_path.is_file() and metadata_path.is_file():
@@ -288,7 +346,9 @@ def prepare_job_narration(folder, ctx, force=False):
             if old.get("script_sha256") == script_hash and old.get("voice") == settings["voice"]:
                 _stage_for_stickman(folder)
                 (folder / "narration_blocker.md").unlink(missing_ok=True)
-                return {"ready": True, **old, "reused": True}
+                info = {"ready": True, **old, "reused": True}
+                _update_mission_files(folder, info)
+                return info
         except (OSError, ValueError, TypeError):
             pass
     try:
@@ -297,7 +357,9 @@ def prepare_job_narration(folder, ctx, force=False):
         audio_path.unlink(missing_ok=True)
         note = f"La synthèse Piper a échoué : {exc}"
         (folder / "narration_blocker.md").write_text(note + "\n", encoding="utf-8")
-        return {"ready": False, "note": note, "voice": settings["voice"]}
+        info = {"ready": False, "note": note, "voice": settings["voice"]}
+        _update_mission_files(folder, info)
+        return info
     metadata = {**result, "voice": settings["voice"], "voice_license": VOICE_LICENSE,
                 "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
                 "script_sha256": script_hash, "script_characters": len(narration),
@@ -310,7 +372,9 @@ def prepare_job_narration(folder, ctx, force=False):
     (folder / "voice_attribution.md").write_text(attribution, encoding="utf-8")
     (folder / "narration_blocker.md").unlink(missing_ok=True)
     _stage_for_stickman(folder)
-    return {"ready": True, **metadata, "reused": False}
+    info = {"ready": True, **metadata, "reused": False}
+    _update_mission_files(folder, info)
+    return info
 
 
 def ensure_job_narration(folder, ctx, phase="start"):
@@ -320,7 +384,9 @@ def ensure_job_narration(folder, ctx, phase="start"):
         if not audio.is_file() or not metadata.is_file():
             raise PiperError("La narration Piper approuvée est introuvable. Restaure narration.wav et narration_metadata.json ; aucune autre voix ne sera substituée.")
         _stage_for_stickman(folder)
-        return json.loads(metadata.read_text(encoding="utf-8"))
+        info = json.loads(metadata.read_text(encoding="utf-8"))
+        _update_mission_files(folder, {"ready": True, **info})
+        return info
     return prepare_job_narration(folder, ctx, force=False)
 
 
