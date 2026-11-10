@@ -119,7 +119,7 @@ Le modèle n'est **pas choisi par défaut**, car nous n'avons pas encore les car
 py -3 -m unittest discover -s tests -v
 ```
 
-Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, indexation des sorties imbriquées, approbation de l'aperçu, autorisation du rendu final, revue finale, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé. La CI GitHub exécute les 13 tests sur Python 3.11 et 3.12.
+Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, indexation des sorties imbriquées, approbation de l'aperçu, autorisation du rendu final, revue finale, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé. La CI GitHub exécute les 14 tests sur Python 3.11 et 3.12, avec vérification de syntaxe JavaScript du dashboard.
 
 ## Structure
 
