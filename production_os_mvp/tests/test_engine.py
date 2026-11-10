@@ -133,7 +133,7 @@ class ProductionTests(unittest.TestCase):
             encoding="utf-8"
         )
         (folder / "stickman_request.md").write_text(
-            "## Blocage narration — Piper requis\\nAncien diagnostic Piper absent.\\n\\n## Consigne d'exécution\\nCréer l'aperçu.",
+            "## Blocage narration — Piper requis\nAncien diagnostic Piper absent.\n\n## Consigne d'exécution\nCréer l'aperçu.",
             encoding="utf-8"
         )
         (folder / "stickman_job.json").write_text(
