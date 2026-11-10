@@ -23,7 +23,7 @@ DEFAULT_SETTINGS = {
     "primary": "codex",
     "fallbacks": ["antigravity", "ollama"],
     "auto_fallback": True,
-    "ollama_model": "",
+    "ollama_model": "qwen2.5:3b",
     "allow_gemini_api_key": False,
     "switch_at_remaining_percent": 5,
 }
@@ -50,6 +50,7 @@ def get_settings() -> dict:
     result["ollama_model"] = (
         os.environ.get("OLLAMA_MODEL", "").strip()
         or os.environ.get("STICKMAN_CODEX_MODEL", "").strip()
+        or DEFAULT_SETTINGS["ollama_model"]
     )
     path = settings_path()
     try:
@@ -63,7 +64,7 @@ def get_settings() -> dict:
                 result["fallbacks"] = _clean_fallbacks(fallbacks, result["primary"])
             if isinstance(stored.get("auto_fallback"), bool):
                 result["auto_fallback"] = stored["auto_fallback"]
-            if isinstance(stored.get("ollama_model"), str):
+            if isinstance(stored.get("ollama_model"), str) and stored["ollama_model"].strip():
                 result["ollama_model"] = stored["ollama_model"].strip()[:120]
             if isinstance(stored.get("allow_gemini_api_key"), bool):
                 result["allow_gemini_api_key"] = stored["allow_gemini_api_key"]
@@ -95,7 +96,7 @@ def save_settings(data: dict) -> dict:
     auto_fallback = data.get("auto_fallback", True)
     if not isinstance(auto_fallback, bool):
         raise ValueError("Le basculement automatique doit être un booléen")
-    model = data.get("ollama_model", "")
+    model = data.get("ollama_model", DEFAULT_SETTINGS["ollama_model"]) or DEFAULT_SETTINGS["ollama_model"]
     if not isinstance(model, str) or len(model.strip()) > 120:
         raise ValueError("Nom de modèle Ollama invalide")
     allow_gemini_api_key = data.get("allow_gemini_api_key", False)
@@ -174,7 +175,22 @@ def find_antigravity() -> str | None:
 
 def find_ollama() -> str | None:
     local = os.environ.get("LOCALAPPDATA", "").strip()
-    extra = [str(Path(local) / "Programs" / "Ollama" / "ollama.exe")] if local else []
+    program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files").strip()
+    extra = []
+    if local:
+        extra.extend([
+            str(Path(local) / "Programs" / "Ollama" / "ollama.exe"),
+            str(Path(local) / "Microsoft" / "WinGet" / "Links" / "ollama.exe"),
+        ])
+        winget = Path(local) / "Microsoft" / "WinGet" / "Packages"
+        try:
+            extra.extend(str(path) for path in winget.glob("Ollama.Ollama_*/*/ollama.exe"))
+            extra.extend(str(path) for path in winget.glob("Ollama.Ollama_*/ollama.exe"))
+        except OSError:
+            pass
+    if program_files:
+        extra.append(str(Path(program_files) / "Ollama" / "ollama.exe"))
+    extra.append(str(Path.home() / "AppData" / "Local" / "Programs" / "Ollama" / "ollama.exe"))
     return _find_binary("OLLAMA_BIN", ["ollama", "ollama.exe"], extra)
 
 
@@ -211,6 +227,7 @@ def _version(executable: str | None) -> str | None:
 def _ollama_info(model: str) -> dict:
     executable = find_ollama()
     version = _version(executable)
+    selected = str(model or DEFAULT_SETTINGS["ollama_model"]).strip()
     models = []
     running = False
     try:
@@ -225,25 +242,29 @@ def _ollama_info(model: str) -> dict:
         running = True
     except (OSError, ValueError, TypeError, urllib.error.URLError):
         pass
-    selected = model.strip()
-    if not selected and models:
-        selected = ""
     installed_model = selected in models if selected else False
     codex_harness = bool(find_codex())
-    ready = bool(executable and running and installed_model)
+    # The local HTTP API is authoritative for text generation. The CLI is
+    # optional for direct /api/generate calls; Codex is still required as the
+    # agentic harness for Stickman/Ollama mode.
+    ready = bool(running and installed_model)
     agent_ready = bool(ready and codex_harness)
-    if not executable:
-        note = "Ollama CLI introuvable."
-    elif not running:
-        note = "Ollama est installé mais son service local ne répond pas."
+    if not running:
+        note = (
+            "Service Ollama local injoignable sur 127.0.0.1:11434. "
+            "Démarre Ollama puis actualise le diagnostic."
+        )
     elif not selected:
         note = "Service Ollama actif. Choisis un modèle déjà téléchargé dans le panneau."
     elif not installed_model:
         note = f"Le modèle {selected} n'est pas présent dans ollama list."
+    elif not executable:
+        note = f"API Ollama prête avec {selected}. CLI introuvable, mais inutile pour la génération de texte ; Codex CLI reste requis pour le mode agent."
     else:
         note = f"Modèle local prêt : {selected}."
     return {
-        "installed": bool(executable),
+        "installed": bool(executable or running),
+        "cli_installed": bool(executable),
         "ready": ready,
         "agent_ready": agent_ready,
         "version": version,
