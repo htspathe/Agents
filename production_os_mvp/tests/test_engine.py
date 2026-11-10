@@ -111,6 +111,7 @@ class ProductionTests(unittest.TestCase):
         (nested / "preview.mp4").write_bytes(b"first-preview")
         preview = stickman_bridge.mark_preview_ready(task["id"], "stickman_project/output/preview.mp4")
         self.assertEqual(preview["status"], "awaiting_preview_approval")
+        self.assertEqual(json.loads((engine.ROOT / "outputs" / task["id"] / "publishing_manifest.json").read_text())["status"], "AWAITING_PREVIEW_APPROVAL")
         decision = engine.decide_job(
             task["id"], "request_changes",
             "Renforcer l'accroche et vérifier l'exemple financier.",
@@ -136,6 +137,7 @@ class ProductionTests(unittest.TestCase):
         stickman_bridge.mark_preview_ready(revision_id, "stickman_project/output/preview.mp4")
         preview_approved = engine.decide_job(revision_id, "approve_preview", "Aperçu corrigé accepté")
         self.assertEqual(preview_approved["status"], "render_authorized")
+        self.assertEqual(json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())["status"], "RENDER_AUTHORIZED")
 
         (revision_output / "final.mp4").write_bytes(b"final-render")
         (revision_output / "captions.srt").write_text("1\\n00:00:00,000 --> 00:00:01,000\\nTexte validé\\n", encoding="utf-8")
@@ -143,10 +145,14 @@ class ProductionTests(unittest.TestCase):
             revision_id, "stickman_project/output/final.mp4", "stickman_project/output/captions.srt"
         )
         self.assertEqual(final_ready["status"], "awaiting_approval")
+        final_qa = json.loads((engine.ROOT / "outputs" / revision_id / "qa_report.json").read_text())
+        self.assertTrue(final_qa["stickman"]["final_video_received"])
         approved = engine.decide_job(revision_id, "approve", "Rendu final accepté")
         self.assertEqual(approved["status"], "approved")
         self.assertEqual(engine.get_job(revision_id)["status"], "approved")
-        self.assertFalse(json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())["auto_publish"])
+        final_manifest = json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())
+        self.assertEqual(final_manifest["status"], "APPROVED_MANUAL_REVIEW")
+        self.assertFalse(final_manifest["auto_publish"])
 
     def test_reject_requires_reason_and_is_terminal(self):
         task = self.launch("kdp", "Guide de budget personnel")
