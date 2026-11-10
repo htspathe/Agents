@@ -7,6 +7,7 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 ## Ce qui marche dans ce MVP
 
 - **Dashboard local** sur `127.0.0.1:8765` : créer une mission, voir son état, consulter le journal et télécharger les livrables.
+- **Mes productions** : médiathèque centrale filtrable par zone, format et statut ; aperçu des vidéos, images, documents et données ; téléchargement individuel et export ZIP complet par mission.
 - **Orchestrator** : file d'exécution limitée, rôles en séquence, journal d'événements, statuts persistants SQLite.
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
 - **Content Strategist** : brouillons générés avec Ollama si configuré ; sans Ollama, gabarits déterministes et clairement signalés.
