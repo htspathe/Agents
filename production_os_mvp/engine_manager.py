@@ -345,17 +345,21 @@ def _run_capture(executable: str, args: list[str], prompt: str, timeout: int, pr
     return result.stdout.strip()
 
 
+def build_codex_text_args(output: Path) -> list[str]:
+    return [
+        "--cd", str(ROOT), "--sandbox", "read-only", "--ask-for-approval", "never",
+        "exec", "--skip-git-repo-check", "--output-last-message", str(output),
+        "--json", "-"
+    ]
+
+
 def _generate_codex(prompt: str, timeout: int = 150) -> str:
     executable = find_codex()
     if not executable:
         raise ProviderError("codex", "Codex CLI introuvable", True)
     with tempfile.TemporaryDirectory(prefix="production-os-codex-") as temp:
         output = Path(temp) / "answer.md"
-        args = [
-            "--cd", str(ROOT), "--sandbox", "read-only", "--ask-for-approval", "never",
-            "--skip-git-repo-check", "--output-last-message", str(output),
-            "exec", "--json", "-"
-        ]
+        args = build_codex_text_args(output)
         _run_capture(executable, args, prompt, timeout, "codex")
         if not output.is_file():
             raise ProviderError("codex", "Codex n'a pas fourni de réponse finale.", True)
