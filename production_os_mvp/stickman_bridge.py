@@ -42,6 +42,25 @@ def _source_file(root: Path, relative_path: str, extensions: set[str]) -> Path:
     return source
 
 
+
+def _update_generated_reports(root: Path, manifest_status: str, extra: dict) -> None:
+    manifest_path = root / "publishing_manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["status"] = manifest_status
+            manifest["auto_publish"] = False
+            manifest["updated"] = engine.now()
+            manifest["stickman"] = extra
+            manifest["files_at_manifest_time"] = sorted(
+                item.relative_to(root).as_posix()
+                for item in root.rglob("*")
+                if item.is_file() and not item.is_symlink()
+            )
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+        except (OSError, ValueError, TypeError):
+            pass
+
 def mark_preview_ready(job_id: str, file: str) -> dict:
     job, root = _job_root(job_id)
     if job["status"] != "awaiting_external":
@@ -51,6 +70,9 @@ def mark_preview_ready(job_id: str, file: str) -> dict:
     if source != destination:
         shutil.copy2(source, destination)
     engine.set_status(job_id, "awaiting_preview_approval")
+    _update_generated_reports(root, "AWAITING_PREVIEW_APPROVAL", {
+        "preview_received": True, "preview_file": destination.name, "final_render_received": False
+    })
     engine.add_event(job_id, "stickman", "awaiting_preview_approval",
                      "Aperçu audio/vidéo importé ; validation humaine requise avant le rendu complet.")
     return {"id": job_id, "status": "awaiting_preview_approval", "preview": destination.name}
@@ -69,6 +91,34 @@ def mark_final_ready(job_id: str, file: str, captions: str) -> dict:
     if caption_source != caption_path:
         shutil.copy2(caption_source, caption_path)
     engine.set_status(job_id, "awaiting_approval")
+    _update_generated_reports(root, "AWAITING_FINAL_APPROVAL", {
+        "preview_received": True, "final_render_received": True,
+        "final_video": final_path.name, "captions": caption_path.name
+    })
+    qa_path = root / "qa_report.json"
+    if qa_path.is_file():
+        try:
+            qa = json.loads(qa_path.read_text(encoding="utf-8"))
+            pending = qa.get("pending_human_checks", [])
+            qa["pending_human_checks"] = [
+                item for item in pending
+                if "aperçu audio/vidéo et rendu final encore à produire" not in item
+            ]
+            qa["pending_human_checks"].append("Rendu final et sous-titres reçus : revue humaine finale requise")
+            qa["stickman"] = {"final_video_received": True, "captions_received": True}
+            qa["publication_ready"] = False
+            qa_path.write_text(json.dumps(qa, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except (OSError, ValueError, TypeError):
+            pass
+    analytics_path = root / "analytics.json"
+    if analytics_path.is_file():
+        try:
+            analytics = json.loads(analytics_path.read_text(encoding="utf-8"))
+            analytics["video_exports"] = len([item for item in root.rglob("*.mp4") if item.is_file() and not item.is_symlink()])
+            analytics["stickman_final_received"] = True
+            analytics_path.write_text(json.dumps(analytics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except (OSError, ValueError, TypeError):
+            pass
     engine.add_event(job_id, "stickman", "awaiting_approval",
                      "Rendu final et sous-titres importés ; revue finale requise avant acceptation.")
     return {"id": job_id, "status": "awaiting_approval",
