@@ -1,0 +1,12 @@
+{
+  "brand": "Brain to Billions",
+  "narrator_key": "brain-to-billions-main",
+  "provider": "windows_sapi",
+  "voice_name": "Microsoft Paul",
+  "language": "fr-FR",
+  "speech_rate": 0,
+  "volume": 100,
+  "approval_status": "provisional",
+  "voice_selection_policy": "same voice_id for every episode; fail if unavailable; never substitute",
+  "notes": "Temporary narrator previously used in the 25-second Stickman MVP. Not yet approved as the permanent brand voice. For future multilingual narration, select a consented multilingual TTS voice and keep its identity fixed."
+}
