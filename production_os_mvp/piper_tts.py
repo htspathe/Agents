@@ -296,7 +296,7 @@ def prepare_job_narration(folder, ctx, force=False):
     except PiperError as exc:
         audio_path.unlink(missing_ok=True)
         note = f"La synthèse Piper a échoué : {exc}"
-        (folder / "narration_blocker.md").write_text(note + "\\n", encoding="utf-8")
+        (folder / "narration_blocker.md").write_text(note + "\n", encoding="utf-8")
         return {"ready": False, "note": note, "voice": settings["voice"]}
     metadata = {**result, "voice": settings["voice"], "voice_license": VOICE_LICENSE,
                 "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
