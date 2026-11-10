@@ -207,11 +207,11 @@ def list_library(query="", workflow="", kind="", status=""):
         output_root = (ROOT / "outputs").resolve()
         files = []
         if folder.parent == output_root and folder.is_dir():
-            for path in sorted(folder.iterdir(), key=lambda item: item.name.casefold()):
-                if not path.is_file() or path.name.startswith("."):
+            for path in sorted(folder.rglob("*"), key=lambda item: item.relative_to(folder).as_posix().casefold()):
+                if not path.is_file() or path.is_symlink() or path.name.startswith("."):
                     continue
                 resolved = path.resolve()
-                if resolved.parent != folder:
+                if folder not in resolved.parents:
                     continue
                 suffix = path.suffix.casefold()
                 if suffix not in ARTIFACT_EXTENSIONS:
@@ -221,7 +221,7 @@ def list_library(query="", workflow="", kind="", status=""):
                 except OSError:
                     continue
                 files.append({
-                    "name": path.name,
+                    "name": path.relative_to(folder).as_posix(),
                     "size": stat.st_size,
                     "extension": suffix,
                     "kind": ARTIFACT_KIND_BY_SUFFIX.get(suffix, "other")
@@ -324,9 +324,14 @@ def revise_job(job_id):
         raise ValueError("Dossier de révision invalide")
     target.mkdir(parents=True, exist_ok=True)
     if source.is_dir():
-        for item in source.iterdir():
+        for item in source.rglob("*"):
             if item.is_file() and not item.is_symlink():
-                shutil.copy2(item, target / item.name)
+                resolved = item.resolve()
+                if source not in resolved.parents:
+                    continue
+                destination = target / item.relative_to(source)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(resolved, destination)
     add_event(new_id, "orchestrator", "revision", f"Révision de {job_id}, reprise à {data['start_agent']}.")
     return new_id
 
@@ -346,7 +351,11 @@ def job_detail(job_id):
     job["correction_request"] = input_data.get("correction_request") or None
     job["start_agent"] = input_data.get("start_agent", "orchestrator")
     folder = ROOT / "outputs" / job_id
-    job["files"] = [{"name": p.name, "size": p.stat().st_size} for p in sorted(folder.iterdir()) if p.is_file()] if folder.is_dir() else []
+    job["files"] = [
+        {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
+        for p in sorted(folder.rglob("*"), key=lambda item: item.relative_to(folder).as_posix().casefold())
+        if p.is_file() and not p.is_symlink() and folder in p.resolve().parents
+    ] if folder.is_dir() else []
     job.pop("input_json", None)
     return job
 
