@@ -69,6 +69,23 @@ class ProductionTests(unittest.TestCase):
         data = json.loads((folder / "storyboard.json").read_text())
         self.assertTrue(data["requires_original_footage"])
 
+
+    def test_library_indexes_artifacts_and_filters(self):
+        task = self.launch("youtube", "Comprendre le DCF et sa valorisation")
+        library = engine.list_library()
+        entry = next(item for item in library["jobs"] if item["id"] == task["id"])
+        names = {item["name"] for item in entry["files"]}
+        self.assertTrue({"research.md", "content.md", "storyboard.json", "visual.svg"}.issubset(names))
+        self.assertGreaterEqual(library["stats"]["files"], len(names))
+
+        documents = engine.list_library(workflow="youtube", kind="document")
+        filtered = next(item for item in documents["jobs"] if item["id"] == task["id"])
+        self.assertIn("content.md", {item["name"] for item in filtered["files"]})
+        self.assertNotIn("storyboard.json", {item["name"] for item in filtered["files"]})
+
+        searched = engine.list_library(query="Comprendre le DCF")
+        self.assertIn(task["id"], {item["id"] for item in searched["jobs"]})
+
     def test_invalid_workflow_and_no_rights(self):
         with self.assertRaises(ValueError):
             engine.new_job({"workflow": "unknown", "brief": "Une mission test"})
