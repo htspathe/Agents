@@ -93,20 +93,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(404, {"error": "Production introuvable"})
                 return
             artifacts = []
-            for item in folder.iterdir():
-                if not item.is_file() or item.name.startswith(".") or item.suffix.lower() not in ALLOWED_ARTIFACTS:
+            for item in folder.rglob("*"):
+                if not item.is_file() or item.is_symlink() or item.name.startswith(".") or item.suffix.lower() not in ALLOWED_ARTIFACTS:
                     continue
                 resolved = item.resolve()
-                if resolved.parent == folder:
-                    artifacts.append(resolved)
+                if folder in resolved.parents:
+                    artifacts.append((resolved, item.relative_to(folder).as_posix()))
             if not artifacts:
                 self.respond(404, {"error": "Aucun livrable à exporter"})
                 return
             with tempfile.TemporaryDirectory(prefix="production-os-export-") as temp_dir:
                 archive = Path(temp_dir) / f"production-os-{job_id}.zip"
                 with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-                    for artifact in artifacts:
-                        bundle.write(artifact, arcname=artifact.name)
+                    for artifact, archive_name in artifacts:
+                        bundle.write(artifact, arcname=archive_name)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/zip")
                 self.send_header("Content-Disposition", f'attachment; filename="production-os-{job_id}.zip"')
@@ -126,8 +126,12 @@ class Handler(BaseHTTPRequestHandler):
             job_id, filename = m.groups()
             filename = unquote(filename)
             root = (ROOT / "outputs" / job_id).resolve()
-            target = (root / filename).resolve()
-            if not target.is_file() or target.parent != root or target.suffix.lower() not in ALLOWED_ARTIFACTS:
+            relative = Path(filename)
+            if relative.is_absolute() or any(part in {".", ".."} for part in relative.parts):
+                self.respond(404, {"error": "Fichier indisponible"})
+                return
+            target = (root / relative).resolve()
+            if not target.is_file() or root not in target.parents or target.suffix.lower() not in ALLOWED_ARTIFACTS:
                 self.respond(404, {"error": "Fichier indisponible"})
                 return
             typ = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
