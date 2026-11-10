@@ -197,6 +197,41 @@ class ProductionTests(unittest.TestCase):
         self.assertIn("ollama", args)
         self.assertIn("qwen3:8b", args)
 
+    def test_stickman_worker_falls_back_from_codex_quota_to_antigravity(self):
+        task = self.launch("youtube", "Test bascule Codex vers Gemini")
+        settings = {
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": "", "allow_gemini_api_key": False
+        }
+        status = {
+            "codex": {"ready": True},
+            "antigravity": {"ready": True},
+            "ollama": {"ready": False, "agent_ready": False}
+        }
+        calls = []
+
+        def fake_provider(provider, job_id, folder, phase, session_id, fallback_from=None):
+            calls.append((provider, phase, fallback_from))
+            if provider == "codex":
+                return 1, None, "HTTP 429: resource exhausted; quota exceeded"
+            preview = folder / "stickman_preview.mp4"
+            preview.write_bytes(b"preview")
+            stickman_bridge.mark_preview_ready(job_id, "stickman_preview.mp4")
+            return 0, "123e4567-e89b-12d3-a456-426614174000", '{"event":"init"}'
+
+        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+             mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
+             mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_provider):
+            result = stickman_worker.run_worker(task["id"], "start")
+
+        self.assertEqual(result, 0)
+        self.assertEqual([call[0] for call in calls], ["codex", "antigravity"])
+        self.assertEqual(calls[1][2], "codex")
+        worker = stickman_worker.get_status(task["id"])
+        self.assertEqual(worker["state"], "waiting_preview_approval")
+        self.assertEqual(worker["provider"], "antigravity")
+        self.assertTrue(any(item["provider"] == "codex" for item in worker["fallback_history"]))
+
     def test_worker_antigravity_uses_headless_sandbox_without_permission_bypass(self):
         args = stickman_worker.build_antigravity_args("start", "Créer un aperçu")
         self.assertIn("--output-format", args)
