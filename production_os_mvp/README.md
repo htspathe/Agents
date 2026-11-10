@@ -6,7 +6,7 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 
 ## Brain to Billions — intégration Stickman expérimentale
 
-La branche d’intégration ajoute une mission dédiée de rendu vidéo local avec Stickman Autopilot, narration SAPI ou WAV, formats 9:16 et 16:9, et contrôle humain obligatoire. Elle ne publie rien sur YouTube. Les sous-titres sont estimés et doivent être recalés. Voir [BTB-STICKMAN.md](BTB-STICKMAN.md) pour les prérequis et limites.
+La branche d’intégration ajoute une mission dédiée de rendu vidéo local avec Stickman Autopilot et la voix **Confident Male — Sample 04** verrouillée via **Qwen3-TTS** (FR/EN), formats 9:16 et 16:9, et contrôle humain obligatoire. L'installation locale de Qwen et de sa référence vocale reste nécessaire. Elle ne publie rien sur YouTube. Les sous-titres sont estimés et doivent être recalés. Voir [BTB-STICKMAN.md](BTB-STICKMAN.md) pour les prérequis et limites.
 
 ## Ce qui marche dans ce MVP
 
