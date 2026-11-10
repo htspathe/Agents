@@ -4,6 +4,10 @@
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
 
+## Brain to Billions — intégration Stickman expérimentale
+
+La branche d’intégration ajoute une mission dédiée de rendu vidéo local avec Stickman Autopilot, narration SAPI ou WAV, formats 9:16 et 16:9, et contrôle humain obligatoire. Elle ne publie rien sur YouTube. Les sous-titres sont estimés et doivent être recalés. Voir [BTB-STICKMAN.md](BTB-STICKMAN.md) pour les prérequis et limites.
+
 ## Ce qui marche dans ce MVP
 
 - **Dashboard local** sur `127.0.0.1:8765` : créer une mission, voir son état, consulter le journal et télécharger les livrables.
