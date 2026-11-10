@@ -236,10 +236,14 @@ def video(ctx, folder):
             "servent uniquement d'inspiration de marque, sans fusionner leurs contrats techniques ou copier leurs personnages."
         )
         bridge_cli = str(ROOT / "stickman_bridge.py")
+        autopilot_cli = str(stickman_skill_dir() / "scripts" / "autopilot.mjs")
+        mission_dir = str(folder.resolve())
         request = f"""# Production OS vers Stickman Video Director
 
 ## Mission
 - Identifiant Production OS : {ctx.get("job_id", "voir le dossier parent")}
+- Dossier de travail de la mission : {mission_dir}
+- Pont Production OS : {bridge_cli}
 - Chaîne : {channel}
 - Sujet : {ctx["brief"]}
 - Mode : {"B · Autopilot" if mode == "autopilot" else "A · Director"}
@@ -261,7 +265,7 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
    Cette commande fait passer la mission à "Aperçu à valider". Arrête-toi et demande à l'utilisateur de valider l'aperçu dans le dashboard. Ne lance jamais le rendu complet avant cette approbation.
 6. Après que l'utilisateur a approuvé l'aperçu, vérifie :
    py -3 "{bridge_cli}" status {ctx.get("job_id", "")}
-   Ne continue que si le statut est "render_authorized". Pour B1-B4, enregistre l'approbation dans le runtime avec node scripts/autopilot.mjs approve "stickman_project/project.json" --note "Aperçu approuvé dans Production OS", puis lance le rendu complet. Pour B5, suis sa route character-explainer dédiée ; pour Director/A6, fournis les prompts et le rendu selon le contrat Director, sans utiliser les commandes Autopilot B1-B4.
+   Ne continue que si le statut est "render_authorized". Pour B1-B4, depuis le dossier de mission, enregistre l'approbation dans le runtime avec node "{autopilot_cli}" approve "stickman_project/project.json" --note "Aperçu approuvé dans Production OS", puis lance node "{autopilot_cli}" render "stickman_project/project.json". Pour B5, suis sa route character-explainer dédiée ; pour Director/A6, fournis les prompts et le rendu selon le contrat Director, sans utiliser les commandes Autopilot B1-B4.
 7. Quand le MP4 final et le fichier de sous-titres SRT/VTT sont prêts, importe-les :
    py -3 "{bridge_cli}" final-ready {ctx.get("job_id", "")} --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
    La mission passe alors à "À valider" pour la revue du rendu final. Ne publie rien sur YouTube.
