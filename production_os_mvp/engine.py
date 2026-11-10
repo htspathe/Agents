@@ -144,8 +144,12 @@ def run_job(job_id: str) -> None:
             artifact = HANDLERS[agent](ctx, folder)
             add_event(job_id, agent, "done", f"Livrable : {artifact}")
         (folder / "run_notes.json").write_text(json.dumps(ctx["notes"], ensure_ascii=False, indent=2), encoding="utf-8")
-        set_status(job_id, "awaiting_approval")
-        add_event(job_id, "orchestrator", "awaiting_approval", "Livrables prêts pour revue (aucune publication)")
+        final_status = "awaiting_external" if job["workflow"] == "youtube" and ctx.get("stickman_enabled", True) else "awaiting_approval"
+        set_status(job_id, final_status)
+        final_message = ("Passerelle Stickman prête ; le rendu externe doit être terminé avant revue finale."
+                         if final_status == "awaiting_external"
+                         else "Livrables prêts pour revue (aucune publication)")
+        add_event(job_id, "orchestrator", final_status, final_message)
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"[:500]
         set_status(job_id, "failed", msg)
@@ -265,7 +269,8 @@ def list_library(query="", workflow="", kind="", status=""):
     }
 
 def decide_job(job_id, action, note="", target_agent="orchestrator"):
-    actions = {"approve": "approved", "request_changes": "changes_requested", "reject": "rejected"}
+    actions = {"approve": "approved", "approve_preview": "render_authorized",
+               "request_changes": "changes_requested", "reject": "rejected"}
     if action not in actions:
         raise ValueError("Décision inconnue")
     note = safe_text(note, 1000)
@@ -274,24 +279,27 @@ def decide_job(job_id, action, note="", target_agent="orchestrator"):
     job = get_job(job_id)
     if not job:
         raise ValueError("Mission introuvable")
-    if job["status"] not in {"awaiting_approval", "changes_requested"}:
-        raise ValueError("Cette mission n'est pas dans un état permettant une décision")
-    if job["status"] == "changes_requested" and action != "request_changes":
-        raise ValueError("Cette mission a déjà été renvoyée en correction ; elle ne peut plus être approuvée ou rejetée")
+    allowed_statuses = {
+        "approve": {"awaiting_approval"},
+        "approve_preview": {"awaiting_preview_approval"},
+        "request_changes": {"awaiting_approval", "awaiting_preview_approval", "changes_requested"},
+        "reject": {"awaiting_approval", "awaiting_preview_approval"}
+    }
+    if job["status"] not in allowed_statuses[action]:
+        raise ValueError("Cette décision n'est pas autorisée pour le statut actuel de la mission")
     target_agent = safe_text(target_agent, 40) or "orchestrator"
     if action == "request_changes" and target_agent != "orchestrator" and target_agent not in WORKFLOW_STEPS[job["workflow"]]:
         raise ValueError("L'agent choisi ne participe pas à ce workflow")
     status = actions[action]
     with LOCK, connect() as db:
         current = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-        if not current or current["status"] not in {"awaiting_approval", "changes_requested"}:
+        if not current or current["status"] not in allowed_statuses[action]:
             raise ValueError("Le statut de la mission a changé ; actualise la page")
-        if current["status"] == "changes_requested" and action != "request_changes":
-            raise ValueError("Cette mission est déjà en correction et ne peut plus être approuvée ou rejetée")
         db.execute("UPDATE jobs SET status=?,updated=?,error=NULL WHERE id=?", (status, now(), job_id))
         db.execute("INSERT INTO decisions(job_id,action,note,target_agent,created) VALUES(?,?,?,?,?)",
                    (job_id, action, note, target_agent, now()))
-        message = {"approve": "Livrable approuvé par revue humaine (aucune publication déclenchée).",
+        message = {"approve": "Rendu final approuvé par revue humaine (aucune publication déclenchée).",
+                   "approve_preview": "Aperçu Stickman approuvé ; le rendu complet est autorisé, pas la publication.",
                    "request_changes": f"Correction demandée à {target_agent}: {note}",
                    "reject": f"Livrable rejeté: {note}"}[action]
         db.execute("INSERT INTO events(job_id,agent,state,message,created) VALUES(?,?,?,?,?)",
@@ -364,6 +372,9 @@ def stats():
     jobs = list_jobs(1000)
     return {"total": len(jobs), "queued": sum(x["status"] == "queued" for x in jobs),
             "running": sum(x["status"] == "running" for x in jobs),
+            "awaiting_external": sum(x["status"] == "awaiting_external" for x in jobs),
+            "awaiting_preview_approval": sum(x["status"] == "awaiting_preview_approval" for x in jobs),
+            "render_authorized": sum(x["status"] == "render_authorized" for x in jobs),
             "awaiting_approval": sum(x["status"] == "awaiting_approval" for x in jobs),
             "approved": sum(x["status"] == "approved" for x in jobs),
             "changes_requested": sum(x["status"] == "changes_requested" for x in jobs),
