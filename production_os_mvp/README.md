@@ -125,11 +125,14 @@ agy
 Le script fait une sauvegarde de `~/.gemini/antigravity-cli/settings.json` puis configure une ligne de statut qui copie uniquement les fractions de quota et l'identifiant du modèle dans `.antigravity_quota_status.json` (fichier ignoré par Git). Il ne copie pas tes identifiants, courriels ou discussions. Si un autre `statusLine` est déjà personnalisé, le script **refuse de le remplacer**. Tu peux alors intégrer la capture dans ton script existant. La commande `/usage` d'Antigravity affiche également les quotas, mais ouvre une interface interactive plutôt qu'un flux JSON exploitable directement. La capture doit être actualisée par Antigravity pour que le seuil de 5 % soit utilisé ; une capture périmée est marquée comme inconnue.
 
 **Ollama local**
-- Installe Ollama, lance le service, puis télécharge un modèle adapté à ton PC :
+- Profil recommandé pour un PC avec environ 8 Go de RAM et un processeur sans GPU NVIDIA : `qwen2.5:3b`. Le dashboard Production OS le pré-sélectionne par défaut ; un modèle 7B peut saturer la mémoire disponible.
+- Vérifie le service et les modèles :
   ```powershell
-  ollama pull NOM_DU_MODELE
   ollama list
+  ollama run qwen2.5:3b "Réponds exactement OLLAMA_OK"
   ```
+- Si le modèle manque, télécharge-le une seule fois : `ollama pull qwen2.5:3b`. Conserve les autres modèles déjà installés ; le modèle 3B sera celui utilisé par défaut.
+- Le diagnostic Production OS interroge aussi directement `http://127.0.0.1:11434/api/tags` : le CLI Ollama peut être absent du PATH sans empêcher la génération de texte si le service HTTP local répond.
 - Choisis le nom exact du modèle dans le panneau Moteurs IA. Pour les tâches agentiques Stickman, Ollama utilise le harness local Codex avec `--oss --local-provider ollama` ; le CLI Codex doit donc aussi être installé, mais le modèle répond localement.
 - La génération de texte simple utilise directement l'API locale Ollama.
 
