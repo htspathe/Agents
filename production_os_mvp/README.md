@@ -76,7 +76,7 @@ py -3 .\piper_tts.py test
 
 Le WAV de test est généré dans `.production_os_runtime\piper_test.wav`. Tu peux aussi enregistrer les paramètres et lancer **Générer un test vocal** depuis le panneau **Voix & narration — Piper TTS** du dashboard.
 
-**Voix de Brain to Billions (profil FR actuel) :** `fr_FR-siwis-medium`. Le modèle vocal est sous CC BY 4.0 : une attribution SIWIS est incluse automatiquement dans `voice_attribution.md` pour chaque mission. Le profil disponible est actuellement français ; les missions anglaises sont bloquées plutôt que de recevoir une prononciation française. Ajoute un modèle EN et vérifie sa licence avant d'activer cette langue. Le moteur logiciel Piper est sous GPL-3.0-or-later ; sa licence est distincte de celle du modèle vocal. Consulte la fiche du modèle avant toute redistribution du modèle lui-même : https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/medium.
+**Voix de Brain to Billions (profil FR actuel) :** `fr_FR-siwis-medium`. La fiche du jeu de données SIWIS indique CC BY 4.0, tandis que le dépôt des modèles affiche MIT ; l'attribution SIWIS est incluse automatiquement dans `voice_attribution.md` pour chaque mission. Le profil disponible est actuellement français ; les missions anglaises sont bloquées plutôt que de recevoir une prononciation française. Ajoute un modèle EN et vérifie sa licence avant d'activer cette langue. Le moteur logiciel Piper est sous GPL-3.0-or-later ; sa licence est distincte de celle du modèle vocal. Consulte la fiche du modèle avant toute redistribution du modèle lui-même : https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/medium.
 
 ## Moteurs IA et basculement automatique
 
