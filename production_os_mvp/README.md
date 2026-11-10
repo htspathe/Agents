@@ -71,7 +71,7 @@ Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique 
 1. Choisis `YouTube` dans Zone de production.
 2. Sélectionne `Autopilot` et le style `B1` pour le premier pilote vertical Brain to Billions (9:16, 60 secondes, français).
 3. Lance la mission. Production OS crée `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json` et, si le runtime local est prêt, un projet Stickman initial. La mission passe à `En attente Stickman`, pas à `À valider`.
-4. Ouvre le dossier de mission avec Codex ou Claude Code et demande-lui d'exécuter `stickman_request.md` avec le Skill installé. Le Skill Autopilot a besoin d'un agent capable de lire/écrire des fichiers et d'exécuter des commandes.
+4. Ouvre `production_os_mvp` comme workspace dans Codex ou Claude Code (c'est là que le Skill est installé), puis navigue vers `outputs/IDENTIFIANT_MISSION`. Demande à l'agent de lire et d'exécuter `stickman_request.md`. Le Skill Autopilot a besoin d'un agent capable de lire/écrire des fichiers et d'exécuter des commandes.
 5. Fais générer un aperçu d'environ 20 secondes avec son et sous-titres. Depuis le dossier de mission, l'agent signale l'aperçu à Production OS :
 
 ```powershell
