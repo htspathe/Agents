@@ -1,12 +1,25 @@
 {
   "brand": "Brain to Billions",
   "narrator_key": "brain-to-billions-main",
-  "provider": "windows_sapi",
-  "voice_name": "Microsoft Paul",
-  "language": "fr-FR",
-  "speech_rate": 0,
-  "volume": 100,
-  "approval_status": "provisional",
-  "voice_selection_policy": "same voice_id for every episode; fail if unavailable; never substitute",
-  "notes": "Temporary narrator previously used in the 25-second Stickman MVP. Not yet approved as the permanent brand voice. For future multilingual narration, select a consented multilingual TTS voice and keep its identity fixed."
+  "provider": "qwen3_tts_voice_clone",
+  "voice_id": "hangry-labs/confident_male/sample04",
+  "voice_name": "Confident Male — Sample 04",
+  "description": "A confident adult man with a firm middle register, clean articulation and the poised delivery of a documentary presenter.",
+  "languages": {
+    "fr": "French",
+    "en": "English"
+  },
+  "reference_language": "English",
+  "reference_audio": "voice_assets/confident_male.flac",
+  "reference_text": "The little bookshop was quiet when I arrived. Outside, the rain had stopped, and warm sunlight was finding its way through the windows.",
+  "reference_source_url": "https://hangry-labs.github.io/faster-qwen3-tts-studio/examples/assets/references/confident_male.flac",
+  "reference_sha256": "107f67576b04f5c0b050327863c198eceb9bab297daf061e4138912595183368",
+  "model_id": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+  "model_revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+  "reference_design_seed": 7303,
+  "seed": 8103,
+  "approval_status": "approved",
+  "voice_selection_policy": "Always use this exact reference audio and text for every episode. Never auto-fallback to another voice.",
+  "rights_note": "Gallery reference is a synthetic designed voice made available as a downloadable reference; keep attribution/provenance and check downstream commercial-use obligations.",
+  "caution": "Cross-language accent/timbre fidelity must be listened to and validated. Approved means creative selection, not proof of local runtime success."
 }
