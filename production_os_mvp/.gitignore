@@ -17,3 +17,6 @@ tools/stickman-video-director/
 
 # Local quota telemetry written by provider status hooks
 .production_os_runtime/
+
+# Local provider quota snapshot (never sync account telemetry)
+.antigravity_quota_status.json
