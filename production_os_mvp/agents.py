@@ -456,7 +456,7 @@ def kdp(ctx, folder):
 
 
 def publishing(ctx, folder):
-    items = sorted(p.name for p in folder.iterdir() if p.is_file())
+    items = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file() and not p.is_symlink())
     manifest = {"workflow": ctx["workflow"], "brief": ctx["brief"],
                 "status": "AWAITING_MANUAL_APPROVAL", "auto_publish": False,
                 "files_at_manifest_time": items,
@@ -466,7 +466,7 @@ def publishing(ctx, folder):
 
 
 def quality(ctx, folder):
-    files = [p.name for p in folder.iterdir() if p.is_file()]
+    files = [p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file() and not p.is_symlink()]
     issues = []
     if "publishing_manifest.json" not in files:
         issues.append("Manifeste de publication absent")
@@ -492,8 +492,8 @@ def quality(ctx, folder):
 
 
 def analytics(ctx, folder):
-    files = [p for p in folder.iterdir() if p.is_file()]
-    data = {"domain": ctx["workflow"], "artifacts_created": len(files), "video_exports": len([p for p in files if p.suffix == ".mp4"]),
+    files = [p for p in folder.rglob("*") if p.is_file() and not p.is_symlink()]
+    data = {"domain": ctx["workflow"], "artifacts_created": len(files), "video_exports": len([p for p in files if p.suffix.lower() == ".mp4"]),
             "campaign_results": "NO_REAL_PERFORMANCE_DATA_YET", "ad_spend_xof": 0,
             "notes": "Mesures locales de production, pas données de conversion réelles."}
     write_json(folder, "analytics.json", data)
