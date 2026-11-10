@@ -152,16 +152,16 @@ def build_codex_args(phase: str, workspace: Path, session_id: str | None = None)
     if phase not in {"start", "resume"}:
         raise ValueError("Phase Codex invalide")
     args = ["--cd", str(workspace.resolve()), "--sandbox", "workspace-write",
-            "--ask-for-approval", "never", "--skip-git-repo-check"]
+            "--ask-for-approval", "never"]
     if os.environ.get("STICKMAN_CODEX_PROVIDER", "").strip().lower() == "ollama":
         args.extend(["--oss", "--local-provider", "ollama"])
     model = os.environ.get("STICKMAN_CODEX_MODEL", "").strip()
     if model:
         args.extend(["--model", model])
+    args.append("exec")
     if phase == "resume" and session_id and SESSION_RE.fullmatch(session_id):
-        args.extend(["exec", "resume", session_id, "--json", "-"])
-    else:
-        args.extend(["exec", "--json", "-"])
+        args.extend(["resume", session_id])
+    args.extend(["--skip-git-repo-check", "--json", "-"])
     return args
 
 
