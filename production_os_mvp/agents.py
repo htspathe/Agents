@@ -37,10 +37,11 @@ WORKFLOW_STEPS = {
     "clogz": ["research", "content", "shopify", "support", "creative", "video", "publishing", "quality", "analytics"],
     "kdp": ["research", "content", "kdp", "creative", "publishing", "quality", "analytics"],
     "youtube": ["research", "content", "creative", "video", "publishing", "quality", "analytics"],
+    "brain_to_billions": ["research", "content", "creative", "video", "publishing", "quality", "analytics"],
     "clipping": ["clipping", "creative", "publishing", "quality", "analytics"],
 }
 
-LABELS = {"clogz": "CLOGZ · Campagne", "kdp": "KDP · Livre", "youtube": "YouTube · Vidéo", "clipping": "Clipping · Short"}
+LABELS = {"clogz": "CLOGZ · Campagne", "kdp": "KDP · Livre", "youtube": "YouTube · Vidéo", "brain_to_billions": "Brain to Billions · Stickman", "clipping": "Clipping · Short"}
 
 
 def write_text(folder: Path, name: str, content: str):
@@ -107,7 +108,7 @@ def content(ctx, folder):
         "clogz": f"# Plan de campagne CLOGZ\n\nProduit / intention : {brief}\n\n## Positionnement\nConfort quotidien, style urbain et preuve produit à documenter.\n\n## Angle 1\nMontrer la paire en situation réelle à Dakar.\n\n## Angle 2\nComparer les coloris et inviter à choisir sa pointure.\n\n## Storyboard publicitaire (15 s)\n0–3 s : gros plan de la paire ; 3–9 s : démonstration ; 9–12 s : prix à vérifier ; 12–15 s : appel à consulter clogz.sn.\n\n## Vérifications\nNe pas promettre livraison gratuite, stocks ou promotion sans confirmation Shopify.",
         "kdp": f"# Concept de livre\n\nIdée : {brief}\n\n## Public cible\nÀ préciser avec des recherches marché indépendantes.\n\n## Table des matières (proposition)\n1. Introduction\n2. Les principes fondamentaux\n3. Les méthodes essentielles\n4. Mise en pratique\n5. Exercices ou exemples\n6. Synthèse et ressources\n\n## Originalité\nAjouter des exemples vérifiés, une expertise éditoriale et une relecture humaine.\n\n**Ce fichier n'est pas un manuscrit complet.**",
         "youtube": f"# Script et structure YouTube\n\nSujet : {brief}\n\n## Accroche\nUne question concrète qui ouvre la problématique, sans chiffres non sourcés.\n\n## Découpage\n1. Introduction (0:00–0:30)\n2. Contexte et définitions\n3. Trois mécanismes ou exemples vérifiables\n4. Limites, risques et contre-arguments\n5. Conclusion et appel à l'action\n\n## Voix off (brouillon)\nAujourd'hui, nous allons comprendre : {brief}. Nous examinerons les mécanismes, les faits à vérifier et leurs implications.\n\n## Sources\nAjouter les références externes avant une publication factuelle."
-    }[typ]
+    }["youtube" if typ == "brain_to_billions" else typ]
     prompt = (f"Tu es un agent de production éditoriale responsable. Rédige en français un document Markdown exploitable pour le projet {typ}. "
               "N'invente pas de prix, données ou sources. Ajoute une liste des points à valider. "
               f"Brief : {brief}. Sources internes : {ctx.get('sources', [])}.")
@@ -120,6 +121,7 @@ def svg_card(title: str, label: str, footnote: str, workflow: str) -> str:
         "clogz": ("#102a37", "#d3eaf0", "#f8f5e8"),
         "kdp": ("#172535", "#eedfc0", "#b85d4c"),
         "youtube": ("#111827", "#f1eee7", "#68e1bd"),
+        "brain_to_billions": ("#0B0B0D", "#F7F5F0", "#E8C15A"),
         "clipping": ("#191a28", "#ffffff", "#f5b468")
     }
     bg, foreground, accent = palettes[workflow]
@@ -140,7 +142,7 @@ def svg_card(title: str, label: str, footnote: str, workflow: str) -> str:
 
 
 def creative(ctx, folder):
-    brand = {"clogz":"CLOGZ", "kdp":"KDP STUDIO", "youtube":"YOUTUBE STUDIO", "clipping":"SHORTS STUDIO"}[ctx["workflow"]]
+    brand = {"clogz":"CLOGZ", "kdp":"KDP STUDIO", "youtube":"YOUTUBE STUDIO", "brain_to_billions":"BRAIN TO BILLIONS", "clipping":"SHORTS STUDIO"}[ctx["workflow"]]
     title = ctx["brief"][:110] or "Nouvelle création"
     svg = svg_card(title, brand, "Production OS / Avant publication", ctx["workflow"])
     write_text(folder, "visual.svg", svg)
@@ -159,6 +161,9 @@ def probe(path: Path) -> dict:
 
 
 def video(ctx, folder):
+    if ctx["workflow"] == "brain_to_billions":
+        from stickman_btb import render
+        return render(ctx, folder)
     storyboard = {
         "title": ctx["brief"], "type": "title_preview_only", "requires_original_footage": True,
         "scenes": [
@@ -294,6 +299,10 @@ def quality(ctx, folder):
         issues.append("Manuscrit complet, droits et couverture imprimable non vérifiés")
     if ctx["workflow"] == "youtube":
         issues.append("Sources factuelles et métrages définitifs non vérifiés")
+    if ctx["workflow"] == "brain_to_billions":
+        if "brain_to_billions_9x16.mp4" not in files:
+            issues.append("Export MP4 Stickman vertical absent")
+        issues.append("Vérification éditoriale, sous-titres et approbation humaine requises")
     if ctx["workflow"] == "clogz":
         issues.append("Prix, stocks et conditions commerciales réelles non vérifiés")
     report = {"passed_technical_checks": not any("absent" in x or "absente" in x for x in issues),

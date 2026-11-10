@@ -68,7 +68,8 @@ def new_job(data: dict) -> str:
     job_id = uuid.uuid4().hex[:12]
     clean = {"workflow": typ, "brief": brief, "source_file": safe_text(data.get("source_file"), 170),
              "rights_confirmed": bool(data.get("rights_confirmed")),
-             "start": data.get("start", 0), "end": data.get("end", 10)}
+             "start": data.get("start", 0), "end": data.get("end", 10),
+             "narration": safe_text(data.get("narration"), 2400) if typ == "brain_to_billions" else ""}
     with LOCK, connect() as db:
         db.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)",
                    (job_id, typ, brief, json.dumps(clean), "queued", now(), now(), None))
