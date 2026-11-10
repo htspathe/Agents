@@ -136,17 +136,20 @@ def build_codex_args(
         raise ValueError("Ce moteur n'utilise pas le lanceur Codex")
     args = [
         "--cd", str(workspace.resolve()), "--sandbox", "workspace-write",
-        "--ask-for-approval", "never", "--skip-git-repo-check"
+        "--ask-for-approval", "never"
     ]
     if provider == "ollama":
         args.extend(["--oss", "--local-provider", "ollama"])
         model = model or engine_manager.get_settings().get("ollama_model")
     if model:
         args.extend(["--model", model])
+    # --skip-git-repo-check is an exec option, not a root-level Codex option.
+    args.append("exec")
+    args.append("--skip-git-repo-check")
     if phase == "resume" and session_id and SESSION_RE.fullmatch(session_id):
-        args.extend(["exec", "resume", session_id, "--json", "-"])
+        args.extend(["resume", session_id, "--json", "-"])
     else:
-        args.extend(["exec", "--json", "-"])
+        args.extend(["--json", "-"])
     return args
 
 
