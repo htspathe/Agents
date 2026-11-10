@@ -70,13 +70,31 @@ Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique 
 
 1. Choisis `YouTube` dans Zone de production.
 2. Sélectionne `Autopilot` et le style `B1` pour le premier pilote vertical Brain to Billions (9:16, 60 secondes, français).
-3. Lance la mission. Production OS crée `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json` et, si le runtime local est prêt, un projet Stickman initial.
+3. Lance la mission. Production OS crée `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json` et, si le runtime local est prêt, un projet Stickman initial. La mission passe à `En attente Stickman`, pas à `À valider`.
 4. Ouvre le dossier de mission avec Codex ou Claude Code et demande-lui d'exécuter `stickman_request.md` avec le Skill installé. Le Skill Autopilot a besoin d'un agent capable de lire/écrire des fichiers et d'exécuter des commandes.
-5. Exige un aperçu d'environ 20 secondes avec son, puis valide cet aperçu avant le rendu complet. La validation Production OS reste une étape séparée.
-6. Récupère le MP4, les sous-titres et le projet dans `Mes productions`.
+5. Fais générer un aperçu d'environ 20 secondes avec son et sous-titres. Depuis le dossier de mission, l'agent signale l'aperçu à Production OS :
+
+```powershell
+py -3 ..\..\stickman_bridge.py preview-ready IDENTIFIANT_MISSION --file "stickman_project/output/preview.mp4"
+```
+
+6. La mission passe à `Aperçu à valider`. Écoute et regarde le fichier dans `Mes productions`, puis clique sur **Approuver l'aperçu et autoriser le rendu**. L'agent vérifie ensuite le feu vert :
+
+```powershell
+py -3 ..\..\stickman_bridge.py status IDENTIFIANT_MISSION
+```
+
+7. Si le statut est `render_authorized`, l'agent exécute la commande d'approbation du Skill puis le rendu complet. Après génération du MP4 et du SRT/VTT, il les remet à Production OS :
+
+```powershell
+py -3 ..\..\stickman_bridge.py final-ready IDENTIFIANT_MISSION --file "stickman_project/output/final.mp4" --captions "stickman_project/output/captions.srt"
+```
+
+8. La mission passe à `Rendu final à valider`. Tu peux alors approuver le rendu, demander une correction à l'agent choisi ou rejeter la production. Une approbation finale ne publie rien.
+9. Récupère le MP4, les sous-titres et le projet dans `Mes productions`.
 
 **Limites à connaître :**
-- La passerelle et le projet initial sont intégrés ; le serveur Python ne pilote pas lui-même un agent Codex/Claude et ne génère pas encore le film final.
+- La passerelle, le projet initial et le pont d'états preview/final sont intégrés ; le serveur Python ne pilote pas lui-même un agent Codex/Claude. L'agent local exécute le Skill et appelle `stickman_bridge.py` aux étapes indiquées.
 - Les services de génération d'images et de voix peuvent demander une clé ou des crédits. Aucun appel payant, abonnement ou achat de crédits n'est déclenché sans autorisation.
 - B1 est le point de départ recommandé pour le format vertical. B5 possède une route spécifique et son portrait demande une nouvelle validation ; A6 utilise Director et un fournisseur vidéo distinct.
 - La direction Brain to Billions est originale : personnage récurrent, explications financières et accents ambrés. Les références B1/B5/A6 ne doivent pas conduire à copier un personnage ou à mélanger leurs contrats techniques.
@@ -101,7 +119,7 @@ Le modèle n'est **pas choisi par défaut**, car nous n'avons pas encore les car
 py -3 -m unittest discover -s tests -v
 ```
 
-Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, décisions humaines, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé.
+Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, indexation des sorties imbriquées, approbation de l'aperçu, autorisation du rendu final, revue finale, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé.
 
 ## Structure
 
@@ -109,6 +127,7 @@ Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campa
 production_os_mvp/
   app.py                # Serveur HTTP local + dashboard + API
   engine.py             # SQLite, orchestration, états et journal
+  stickman_bridge.py    # Synchronise aperçu, autorisation de rendu et MP4 final
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
