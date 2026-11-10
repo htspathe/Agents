@@ -9,10 +9,11 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Dashboard local** sur `127.0.0.1:8765` : créer une mission, voir son état, consulter le journal et télécharger les livrables.
 - **Mes productions** : médiathèque centrale filtrable par zone, format et statut ; aperçu des vidéos, images, documents et données ; téléchargement individuel et export ZIP complet par mission.
 - **Orchestrator** : file d'exécution limitée, rôles en séquence, journal d'événements, statuts persistants SQLite.
+- **Revue humaine** : actions Approuver / Demander une correction / Rejeter. Une correction crée une nouvelle mission, conserve les livrables précédents et reprend à l'agent choisi. Une approbation ne publie rien.
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
 - **Content Strategist** : brouillons générés avec Ollama si configuré ; sans Ollama, gabarits déterministes et clairement signalés.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
-- **Video Production** : storyboard JSON et fond vidéo de 3 secondes si FFmpeg est installé. Ce n'est pas une vidéo finale montée.
+- **Video Production + Stickman** : le workflow YouTube crée une passerelle Stickman (`stickman_request.md`, configuration, statut runtime et projet initial si le Skill est installé). Le rendu complet reste exécuté par un agent local compatible Skill (Codex / Claude Code), pas par le serveur Python seul.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -42,7 +43,7 @@ py -3 app.py
 
 Alternatives : `python app.py` ou double-cliquer `start_windows.bat` (sans exemples).
 
-Prérequis : Python **3.11+**. FFmpeg et FFprobe doivent être présents dans `PATH` pour les exports vidéo. Une installation de Python suffit pour les workflows sans rendu.
+Prérequis : Python **3.11+**. FFmpeg et FFprobe doivent être présents dans `PATH` pour les exports vidéo. Une installation de Python suffit pour les workflows sans rendu. Stickman nécessite en plus Node.js **20+**, Git et npm.
 
 **Pour le clipping**, installer FFmpeg et vérifier :
 
@@ -52,6 +53,33 @@ ffprobe -version
 ```
 
 Aucun Docker, n8n ou autre service n'est obligatoire au lancement de ce MVP.
+
+## Installer Stickman Video Director (Windows)
+
+Depuis PowerShell, dans le dossier `production_os_mvp` :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_stickman_windows.ps1
+```
+
+Le script clone le dépôt officiel dans `tools/stickman-video-director`, installe les dépendances du runtime avec `npm ci`, lance le diagnostic, puis expose le même Skill à Codex et Claude Code via des jonctions locales. Le dossier du runtime et les jonctions sont ignorés par Git.
+
+Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique des dépendances manquantes, corrige-les puis relance le script. Après installation, redémarre Production OS pour actualiser l'état affiché sur le dashboard.
+
+### Utiliser Stickman dans Production OS
+
+1. Choisis `YouTube` dans Zone de production.
+2. Sélectionne `Autopilot` et le style `B1` pour le premier pilote vertical Brain to Billions (9:16, 60 secondes, français).
+3. Lance la mission. Production OS crée `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json` et, si le runtime local est prêt, un projet Stickman initial.
+4. Ouvre le dossier de mission avec Codex ou Claude Code et demande-lui d'exécuter `stickman_request.md` avec le Skill installé. Le Skill Autopilot a besoin d'un agent capable de lire/écrire des fichiers et d'exécuter des commandes.
+5. Exige un aperçu d'environ 20 secondes avec son, puis valide cet aperçu avant le rendu complet. La validation Production OS reste une étape séparée.
+6. Récupère le MP4, les sous-titres et le projet dans `Mes productions`.
+
+**Limites à connaître :**
+- La passerelle et le projet initial sont intégrés ; le serveur Python ne pilote pas lui-même un agent Codex/Claude et ne génère pas encore le film final.
+- Les services de génération d'images et de voix peuvent demander une clé ou des crédits. Aucun appel payant, abonnement ou achat de crédits n'est déclenché sans autorisation.
+- B1 est le point de départ recommandé pour le format vertical. B5 possède une route spécifique et son portrait demande une nouvelle validation ; A6 utilise Director et un fournisseur vidéo distinct.
+- La direction Brain to Billions est originale : personnage récurrent, explications financières et accents ambrés. Les références B1/B5/A6 ne doivent pas conduire à copier un personnage ou à mélanger leurs contrats techniques.
 
 ## Activer Ollama (facultatif)
 
@@ -73,7 +101,7 @@ Le modèle n'est **pas choisi par défaut**, car nous n'avons pas encore les car
 py -3 -m unittest discover -s tests -v
 ```
 
-Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, YouTube, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé.
+Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, décisions humaines, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé.
 
 ## Structure
 
@@ -84,6 +112,7 @@ production_os_mvp/
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
+  install_stickman_windows.ps1 # Installation locale du Skill Stickman
   knowledge/            # Base de connaissances locale modifiable
   samples/              # CSV fictifs pour tests
   inbox/                # Sources vidéo importées
@@ -107,8 +136,8 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 
 ## Roadmap de branchement
 
-1. **V0.2 — Moteur de tâches** : règles de relance, validation explicite, planification, tests d'intégration.
-2. **V0.3 — Vidéo** : adaptateurs OpenShorts, Whisper local, Remotion ; transcription et identification de segments vérifiables.
+1. **V0.2 — Moteur de tâches** : validation humaine, décisions persistantes, historique et révisions ciblées intégrés.
+2. **V0.3 — Vidéo** : passerelle Stickman intégrée ; prochaine étape : exécution assistée par agent local et test d'un MP4 réel, puis adaptateurs OpenShorts, Whisper local et Remotion.
 3. **V0.4 — Visuels** : connecteur ComfyUI local ; gestion et réutilisation des modèles et du style de marque.
 4. **V0.5 — Shopify** : lecture seule GraphQL avec droits minimaux et coffre local pour tokens ; comparaison données réelles/CSV.
 5. **V0.6 — Publishing** : connecteurs API officiels, brouillons privés et demandes d'approbation spécifiques par publication.
