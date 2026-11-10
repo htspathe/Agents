@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import engine
 import engine_manager
 import quota_monitor
+import piper_tts
 import stickman_worker
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
@@ -31,7 +32,7 @@ ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ProductionOS/0.3"
+    server_version = "ProductionOS/0.4"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[HTTP] " + fmt % args + "\n")
@@ -69,6 +70,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized():
             self.respond(403, {"error": "Jeton de session local manquant"})
             return
+        if path == "/api/piper/test-audio":
+            audio_path = piper_tts.test_audio_path()
+            if not audio_path.is_file():
+                self.respond(404, {"error": "Aucun WAV de test Piper. Lance d'abord le test vocal."})
+                return
+            self.send_blob(audio_path.read_bytes(), "audio/wav")
+            return
         if path == "/api/state":
             self.respond(200, {"jobs": engine.list_jobs(), "stats": engine.stats(),
                                "agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
@@ -80,7 +88,9 @@ class Handler(BaseHTTPRequestHandler):
                                "engine_quotas": {
                                    key: quota_monitor.get_quota(key)
                                    for key in engine_manager.PROVIDERS
-                               }})
+                               },
+                               "piper": piper_tts.get_status(),
+                               "piper_settings": piper_tts.get_settings()})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -173,6 +183,33 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/piper/settings":
+            if length > 5000:
+                return self.respond(413, {"error": "Configuration Piper trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                settings = piper_tts.save_settings(data)
+                self.respond(200, {"settings": settings, "piper": piper_tts.get_status(refresh=True)})
+            except (ValueError, TypeError) as exc:
+                self.respond(400, {"error": str(exc)[:250]})
+            return
+        if path == "/api/piper/test":
+            if length > 2000:
+                return self.respond(413, {"error": "Texte de test Piper trop volumineux"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                text = data.get("text", "")
+                if not isinstance(text, str) or len(text) > 600:
+                    raise ValueError("Le texte de test doit rester sous 600 caractères.")
+                result = piper_tts.generate_test_audio(text or None)
+                self.respond(200, {"result": result, "piper": piper_tts.get_status(refresh=True)})
+            except (ValueError, TypeError, piper_tts.PiperError) as exc:
+                self.respond(400, {"error": str(exc)[:500]})
+            return
         if path == "/api/engines/settings":
             if length > 8000:
                 return self.respond(413, {"error": "Configuration des moteurs trop volumineuse"})
