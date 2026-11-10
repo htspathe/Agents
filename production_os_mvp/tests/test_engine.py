@@ -14,6 +14,7 @@ import agents
 import stickman_bridge
 import stickman_worker
 import engine_manager
+import quota_monitor
 from unittest import mock
 
 
@@ -250,6 +251,63 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(worker["state"], "waiting_preview_approval")
         self.assertEqual(worker["provider"], "antigravity")
         self.assertTrue(any(item["provider"] == "codex" for item in worker["fallback_history"]))
+
+    def test_stickman_worker_skips_codex_before_call_at_five_percent(self):
+        task = self.launch("youtube", "Test quota cinq pour cent")
+        settings = {
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": "",
+            "switch_at_remaining_percent": 5, "allow_gemini_api_key": False
+        }
+        status = {
+            "codex": {"ready": True}, "antigravity": {"ready": True},
+            "ollama": {"ready": False, "agent_ready": False}
+        }
+        called = []
+        quota_calls = []
+
+        def fake_quota(provider, threshold):
+            quota_calls.append((provider, threshold))
+            if provider == "codex":
+                return True, {"provider": provider, "fresh": True, "remaining_percent": 5}
+            return False, {"provider": provider, "fresh": False, "remaining_percent": None}
+
+        def fake_run(provider, job_id, folder, phase, session_id, fallback_from=None):
+            called.append((provider, fallback_from))
+            (folder / "stickman_preview.mp4").write_bytes(b"real-preview-mock")
+            stickman_bridge.mark_preview_ready(job_id, "stickman_preview.mp4")
+            return 0, "123e4567-e89b-12d3-a456-426614174000", "{}"
+
+        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+             mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
+             mock.patch.object(quota_monitor, "quota_exhausted_soon", side_effect=fake_quota), \
+             mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_run):
+            result = stickman_worker.run_worker(task["id"], "start")
+
+        self.assertEqual(result, 0)
+        self.assertEqual(called, [("antigravity", "codex")])
+        self.assertIn(("codex", 5), quota_calls)
+        worker = stickman_worker.get_status(task["id"])
+        self.assertEqual(worker["state"], "waiting_preview_approval")
+        self.assertTrue(any(x["state"] == "low_quota" for x in worker["fallback_history"]))
+
+    def test_text_generation_skips_codex_at_five_percent(self):
+        settings = {
+            "primary": "codex", "fallbacks": ["antigravity"],
+            "auto_fallback": True, "ollama_model": "", "switch_at_remaining_percent": 5
+        }
+        status = {"codex": {"ready": True}, "antigravity": {"ready": True}}
+        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+             mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
+             mock.patch.object(quota_monitor, "quota_exhausted_soon", side_effect=[
+                 (True, {"remaining_percent": 4}),
+                 (False, {"remaining_percent": 90}),
+             ]), \
+             mock.patch.object(engine_manager, "_generate_codex") as codex, \
+             mock.patch.object(engine_manager, "_generate_antigravity", return_value="Texte Gemini"):
+            result = engine_manager.generate_text("Test", "Fallback", {"notes": []})
+        self.assertEqual(result, "Texte Gemini")
+        codex.assert_not_called()
 
     def test_worker_antigravity_uses_headless_sandbox_without_permission_bypass(self):
         args = stickman_worker.build_antigravity_args("start", "Créer un aperçu")
