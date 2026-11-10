@@ -95,6 +95,32 @@ class ProductionTests(unittest.TestCase):
         data = json.loads((folder / "kdp_metadata_draft.json").read_text())
         self.assertEqual(data["amazon_submission"], "NOT_READY")
 
+    def test_piper_legacy_disabled_setting_is_enabled_once_on_upgrade(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".production_os_piper.json"
+            config.write_text(json.dumps({
+                "enabled": False, "voice": "fr_FR-siwis-medium",
+                "python_path": "", "voice_dir": "", "sentence_silence": 0.18
+            }), encoding="utf-8")
+            with mock.patch.object(piper_tts, "settings_path", return_value=config):
+                settings = piper_tts.get_settings()
+            self.assertTrue(settings["enabled"])
+            migrated = json.loads(config.read_text(encoding="utf-8"))
+            self.assertTrue(migrated["enabled"])
+            self.assertEqual(migrated["settings_schema_version"], 1)
+
+    def test_piper_future_explicit_disabled_setting_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".production_os_piper.json"
+            config.write_text(json.dumps({
+                "enabled": False, "voice": "fr_FR-siwis-medium",
+                "python_path": "", "voice_dir": "", "sentence_silence": 0.18,
+                "settings_schema_version": 1
+            }), encoding="utf-8")
+            with mock.patch.object(piper_tts, "settings_path", return_value=config):
+                settings = piper_tts.get_settings()
+            self.assertFalse(settings["enabled"])
+
     def test_piper_blocks_english_content_until_an_english_voice_is_configured(self):
         folder = Path(engine.ROOT) / "outputs" / "piper-english"
         folder.mkdir(parents=True)
