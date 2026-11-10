@@ -2,7 +2,7 @@
 
 **Version datée : 10 novembre 2026**  
 **Périmètre :** 12 agents fondateurs, 4 zones CLOGZ / KDP / YouTube / Clipping.  
-**Budget des logiciels et des appels LLM du MVP :** 0 € (consommation matérielle et Internet non incluse).
+**Budget logiciel local du MVP :** 0 €. Les fournisseurs externes d'images/voix peuvent être payants ; aucun appel payant, abonnement ou achat de crédits n'est déclenché sans autorisation explicite.
 
 ## 1. Décisions d'architecture
 
@@ -40,9 +40,9 @@ Chaque **agent** est un rôle logique : une description, des responsabilités, u
 
 ### Cycle d'une mission
 
-`queued → running → awaiting_approval` ou `failed`.
+`queued → running → awaiting_approval → approved | changes_requested | rejected` (ou `failed`). Une correction crée une mission de révision distincte, conserve les livrables précédents et reprend au rôle choisi.
 
-Le statut `awaiting_approval` signifie qu'un dossier de livrables est prêt pour une revue manuelle. **Aucun bouton n'autorise une publication dans V0.1.** Dans la prochaine version, un composant d'approbation distinct devra signer les opérations autorisées et noter qui les a validées.
+`approved` signifie que le livrable est accepté par revue humaine, **pas qu'il est publié**. `changes_requested` empêche l'approbation de l'ancienne version. La nouvelle mission revient ensuite à `awaiting_approval`. Chaque décision (action, note, agent cible, date) est persistée dans SQLite et visible dans le journal. Aucun upload ou post externe n'est déclenché.
 
 ## 2. Contrat de chaque agent
 
@@ -52,7 +52,7 @@ Le statut `awaiting_approval` signifie qu'un dossier de livrables est prêt pour
 | Research | Brief + notes internes | Récupération très simple de notes locales | `research.md`, sources internes explicites |
 | Content Strategist | Brief + contexte | Ollama si disponible, sinon gabarit | `content.md`, vérification humaine |
 | Creative | Titre + marque | Composition SVG originale | `visual.svg`, maquette uniquement |
-| Video Production | Intention vidéo | Storyboard + fond vidéo test FFmpeg | `storyboard.json`, vidéo de 3 s facultative |
+| Video Production | Brief YouTube + contenu + configuration Stickman | Handoff Stickman, diagnostic local, initialisation du projet si runtime prêt | `stickman_request.md`, `stickman_job.json`, `stickman_runtime_status.json`, storyboard ; pas de MP4 final automatique |
 | Clipping | Source autorisée + segment | Recadrage vertical 540×960 | `short_vertical.mp4`, contrôle ffprobe |
 | Publishing | Livrables existants | Création du manifeste de livraison | `publishing_manifest.json`, non publié |
 | Shopify Commerce | CSV fictif | Vérifications de valeurs et seuils | `shopify_offline_audit.json` |
@@ -83,9 +83,9 @@ Le statut `awaiting_approval` signifie qu'un dossier de livrables est prêt pour
 
 `Research → Content → Creative → Video Production → Publishing → Quality → Analytics`
 
-**Test de réception V0.1 :** script de structure, maquette de miniature, storyboard, aperçu technique de 3 s, manifeste.
+**Test d'intégration actuel :** la mission YouTube produit un paquet de transfert Stickman, détecte le runtime local et initialise un projet Autopilot lorsque Node 20+, dépendances, polices et FFmpeg/FFprobe sont disponibles. Le Skill est exposé à Codex et Claude Code par le script Windows.
 
-**V0.6 cible :** voix off, scènes originales et B-roll sous licence, sous-titres, transitions, rendu, revue éditoriale, upload privé explicitement configuré. À la date du 2 novembre 2026, la documentation de l'API YouTube indique que `status.privacyStatus` omis peut conduire à une publication `public`, même depuis un projet non vérifié : définir explicitement `private` dès l'intégration. Voir https://developers.google.com/youtube/data/revision_history
+**Limite explicite :** le serveur Python ne lance pas lui-même Codex/Claude Code et ne génère pas encore le film final. Un agent local avec accès fichiers/terminal exécute le Skill, vérifie le fournisseur, produit un aperçu audio/vidéo d'environ 20 s, attend l'approbation de cet aperçu puis rend le film complet. Les dépenses externes restent bloquées sans accord. À la date du 2 novembre 2026, la documentation de l'API YouTube indique que `status.privacyStatus` omis peut conduire à une publication `public`, même depuis un projet non vérifié : définir explicitement `private` dès l'intégration. Voir https://developers.google.com/youtube/data/revision_history
 
 ### Clipping — Priorité technique initiale
 
@@ -99,11 +99,11 @@ Le statut `awaiting_approval` signifie qu'un dossier de livrables est prêt pour
 
 | Jalon | Livrable | Critères de recette |
 |---|---|---|
-| J0 — Fondation | Projet Python/SQLite/dashboard | Serveur sur localhost, 12 rôles, missions historisées, 7 tests automatisés verts |
+| J0 — Fondation | Projet Python/SQLite/dashboard | Serveur sur localhost, 12 rôles, missions historisées, médiathèque et tests automatisés |
 | J1 — Clipping intelligent | FFmpeg + Whisper + OpenShorts/Remotion | Transcription horodatée, 3 extraits candidats, sous-titres et exports, droits confirmés |
 | J2 — Création visuelle | Adaptateur ComfyUI | Image originale, versionnement, contrôle de format et licence des modèles |
 | J3 — CLOGZ réel, lecture seule | Shopify GraphQL | Import d'informations réelles avec autorisation, journal d'accès, zéro mutation |
-| J4 — Production YouTube | Scripts vérifiés + vidéo montée | Rendu audiovisuel complet, narration, sources, sous-titres et revue manuelle |
+| J4 — Production YouTube | Passerelle Stickman + agent local | Installer le Skill, vérifier les fournisseurs sans dépense, générer un aperçu avec son, obtenir l'approbation, produire et contrôler un MP4 réel |
 | J5 — CRM et publication | WhatsApp/YouTube avec permissions | Brouillon puis approbation ciblée, journal et prévention des doublons |
 | J6 — KDP complet | Livre exploitable éditorialement | PDF/ePub et couverture conformes, droits vérifiés, état déclaré IA, revue humaine |
 | J7 — Supervision entreprise | Dashboard KPI + n8n | Mesures par activité, relances limitées, alertes, budgets et sauvegardes |
@@ -118,7 +118,7 @@ Le statut `awaiting_approval` signifie qu'un dossier de livrables est prêt pour
 - **écriture locale :** uniquement dans les dossiers de travail autorisés ;
 - **accès réseau :** Ollama uniquement en localhost dans V0.1 ;
 - **écritures externes :** désactivées par défaut ;
-- **actions sensibles :** approbation nominative et journal détaillé avant tout envoi, paiement ou publication, à développer.
+- **actions sensibles :** décisions humaines persistées avant révision ; approbation de publication séparée et journal détaillé avant tout envoi, paiement ou publication. Les connecteurs externes restent désactivés.
 
 **Limites de sécurité V0.1 :** serveur localhost uniquement, pas de HTTPS, pas de système de comptes/permissions multi-utilisateurs, token de session pour l'interface locale. Ne jamais exposer ce serveur sur un VPS ou Internet sans architecture d'authentification renforcée, proxy HTTPS, quotas, antivirus et protections réseau.
 
