@@ -54,9 +54,9 @@ def main() -> int:
         temporary = DEST.with_suffix(".tmp")
         temporary.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
         os.replace(temporary, DEST)
-        if windows:
-            least = min(item["remaining_fraction"] for item in windows.values() if not item["disabled"])
-            print(f"Quota {least * 100:.0f}% (Production OS)")
+        enabled = [item["remaining_fraction"] for item in windows.values() if not item["disabled"]]
+        if enabled:
+            print(f"Quota {min(enabled) * 100:.0f}% (Production OS)")
         else:
             print("Quota inconnu (Production OS)")
     except (OSError, ValueError, TypeError):
