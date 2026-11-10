@@ -6,3 +6,7 @@ outputs/*
 inbox/*
 !inbox/.gitkeep
 .env
+
+.venv-qwen/
+voice_assets/
+*.flac
