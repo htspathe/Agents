@@ -471,8 +471,11 @@ def kdp(ctx, folder):
 
 def publishing(ctx, folder):
     items = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file() and not p.is_symlink())
+    manifest_status = ("AWAITING_STICKMAN_RENDER"
+                       if ctx["workflow"] == "youtube" and ctx.get("stickman_enabled", True)
+                       else "AWAITING_MANUAL_APPROVAL")
     manifest = {"workflow": ctx["workflow"], "brief": ctx["brief"],
-                "status": "AWAITING_MANUAL_APPROVAL", "auto_publish": False,
+                "status": manifest_status, "auto_publish": False,
                 "files_at_manifest_time": items,
                 "external_integrations": "DISABLED", "notes": ctx["notes"][-8:]}
     write_json(folder, "publishing_manifest.json", manifest)
