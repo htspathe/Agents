@@ -289,7 +289,7 @@ def make_demo_video():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Production OS MVP — 12 agents, local, zero cloud")
+    parser = argparse.ArgumentParser(description="Production OS MVP — 12 agents, local-first, multi-engine")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--demo", action="store_true", help="Créer trois missions de démonstration")
     parser.add_argument("--demo-video", action="store_true", help="Créer une source vidéo synthétique pour tester Clipping")
@@ -308,7 +308,7 @@ def main():
         parser.error("Port invalide")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Production OS démarré : http://127.0.0.1:{args.port}")
-    print("Local uniquement. CTRL+C pour arrêter. Aucun compte connecté, aucune publication automatique.")
+    print("Serveur local uniquement. Les moteurs cloud utilisent les sessions CLI déjà authentifiées ; aucune publication automatique.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
