@@ -1,6 +1,6 @@
-# Production OS — MVP local V0.2
+# Production OS — MVP local V0.3
 
-**Statut : MVP local avec worker Codex/Stickman intégré au dashboard ; le premier test de bout en bout reste à valider sur le PC Windows cible.**
+**Statut : MVP local avec worker multi-moteur Codex / Antigravity-Gemini / Ollama ; le premier test de bout en bout reste à valider sur le PC Windows cible.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
 
@@ -11,9 +11,9 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Orchestrator** : file d'exécution limitée, rôles en séquence, journal d'événements, statuts persistants SQLite.
 - **Revue humaine** : actions Approuver / Demander une correction / Rejeter. Une correction crée une nouvelle mission, conserve les livrables précédents et reprend à l'agent choisi. Une approbation ne publie rien.
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
-- **Content Strategist** : brouillons générés avec Ollama si configuré ; sans Ollama, gabarits déterministes et clairement signalés.
+- **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
-- **Video Production + Stickman** : le workflow YouTube prépare la mission, puis le worker local lance Codex depuis le dashboard, importe l'aperçu, attend l'approbation humaine et reprend la même session pour le rendu final. Le worker n'effectue aucun achat ni publication.
+- **Video Production + Stickman** : le worker choisit le moteur principal, bascule sur Antigravity/Gemini ou Ollama en cas d'erreur fournisseur reconnue, conserve les checkpoints de la mission, importe l'aperçu, attend l'approbation humaine et reprend le rendu final. Aucun achat, crédit ou publication n'est déclenché.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -53,6 +53,54 @@ ffprobe -version
 ```
 
 Aucun Docker, n8n ou autre service n'est obligatoire au lancement de ce MVP.
+
+## Moteurs IA et basculement automatique
+
+Le panneau **Moteurs IA** du dashboard permet de choisir :
+- le moteur principal : Codex, Antigravity/Gemini ou Ollama ;
+- le premier et le deuxième moteur de secours ;
+- l'activation du basculement automatique ;
+- le modèle Ollama déjà téléchargé.
+
+Ordre initial : **Codex → Antigravity/Gemini → Ollama**. Le worker Stickman utilise le même ordre. En cas de quota épuisé, limitation de débit, erreur d'authentification ou indisponibilité réseau reconnue, il tente le moteur suivant. Il ne bascule pas automatiquement sur une erreur de production ordinaire, afin d'éviter de répéter une tâche qui a échoué pour une autre raison. Le moteur de secours inspecte les fichiers et journaux existants avant de continuer ; les sessions ne sont pas transférables entre fournisseurs, mais les livrables et checkpoints restent dans le dossier de mission.
+
+### Installer et connecter les moteurs
+
+**Codex CLI**
+- Installe Codex CLI et connecte ton compte avant de démarrer Production OS.
+- Le worker utilise `codex exec` dans le sandbox `workspace-write`, limité au dossier de la mission.
+- Une authentification API par clé peut entraîner une facturation selon la configuration du compte ; surveille le mode d'authentification choisi.
+
+**Antigravity CLI / Gemini**
+- Installer sous Windows PowerShell :
+  ```powershell
+  irm https://antigravity.google/cli/install.ps1 | iex
+  agy --version
+  agy
+  ```
+- Lance `agy` une première fois dans PowerShell et connecte ton compte Google. Ferme ensuite cette session : Production OS utilisera les identifiants locaux mémorisés.
+- Vérifie le mode headless :
+  ```powershell
+  agy -p "Réponds exactement READY" --output-format json --print-timeout 60s --mode=plan --sandbox
+  ```
+- Antigravity utilise les quotas de ton compte Google. Si le mode Gemini API par clé est configuré, il peut être facturable : l'option **Autoriser Gemini API via clé** reste désactivée par défaut dans Production OS. Ne l'active que si tu acceptes ces coûts.
+
+**Ollama local**
+- Installe Ollama, lance le service, puis télécharge un modèle adapté à ton PC :
+  ```powershell
+  ollama pull NOM_DU_MODELE
+  ollama list
+  ```
+- Choisis le nom exact du modèle dans le panneau Moteurs IA. Pour les tâches agentiques Stickman, Ollama utilise le harness local Codex avec `--oss --local-provider ollama` ; le CLI Codex doit donc aussi être installé, mais le modèle répond localement.
+- La génération de texte simple utilise directement l'API locale Ollama.
+
+### Règles de sécurité et limites
+- Les clés et tokens ne sont jamais enregistrés dans le dépôt ni dans `.production_os_engines.json`. Les préférences locales ne contiennent que l'ordre des moteurs et le nom du modèle Ollama.
+- Le mode Gemini API par clé est bloqué par défaut si une clé et le fournisseur API sont détectés ; l'utilisateur doit activer explicitement l'autorisation dans le dashboard.
+- Les appels cloud peuvent consommer les quotas des comptes Codex ou Google. Aucun achat de crédits, abonnement, retry payant ou publication externe n'est effectué par le worker.
+- Le fallback conserve les fichiers et l'état de mission, mais ne transfère pas l'historique de conversation privé entre Codex et Antigravity. Le nouveau moteur reprend à partir des livrables et journaux présents.
+- Ollama ne consomme pas de quota cloud, mais nécessite assez de RAM/VRAM et peut être lent selon le matériel. Le modèle n'est pas choisi automatiquement.
+- L'état d'authentification Codex/Antigravity est vérifié au premier vrai lancement, pas uniquement par la détection du binaire.
 
 ## Installer Stickman Video Director (Windows)
 
@@ -106,7 +154,7 @@ Le modèle n'est **pas choisi par défaut**, car nous n'avons pas encore les car
 py -3 -m unittest discover -s tests -v
 ```
 
-Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, indexation des sorties imbriquées, approbation de l'aperçu, autorisation du rendu final, revue finale, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé. La CI GitHub exécute les 14 tests sur Python 3.11 et 3.12, avec vérification de syntaxe JavaScript du dashboard.
+Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campagnes CLOGZ, KDP, passerelle YouTube/Stickman, indexation des sorties imbriquées, approbation de l'aperçu, autorisation du rendu final, revue finale, révisions ciblées, absence de publication, refus sans déclaration de droits, protection des chemins et export vertical FFmpeg si installé. La CI GitHub exécute les tests automatisés sur Python 3.11 et 3.12, avec vérification de syntaxe JavaScript du dashboard.
 
 ## Structure
 
@@ -114,8 +162,9 @@ Les tests sont isolés dans un dossier temporaire et couvrent : 12 rôles, campa
 production_os_mvp/
   app.py                # Serveur HTTP local + dashboard + API
   engine.py             # SQLite, orchestration, états et journal
+  engine_manager.py     # Sélection des moteurs, statuts, quotas et basculement
   stickman_bridge.py    # Synchronise aperçu, autorisation de rendu et MP4 final
-  stickman_worker.py    # Lance/reprend Codex en arrière-plan depuis le dashboard
+  stickman_worker.py    # Lance/reprend Stickman via Codex, Antigravity ou Ollama
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
@@ -144,11 +193,11 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 ## Roadmap de branchement
 
 1. **V0.2 — Moteur de tâches** : validation humaine, décisions persistantes, historique et révisions ciblées intégrés.
-2. **V0.3 — Vidéo** : passerelle Stickman intégrée ; prochaine étape : exécution assistée par agent local et test d'un MP4 réel, puis adaptateurs OpenShorts, Whisper local et Remotion.
+2. **V0.3 — Multi-moteur et vidéo** : routeur Codex / Antigravity / Ollama intégré ; test d'un MP4 réel à valider sur le PC cible, puis adaptateurs OpenShorts, Whisper local et Remotion.
 3. **V0.4 — Visuels** : connecteur ComfyUI local ; gestion et réutilisation des modèles et du style de marque.
 4. **V0.5 — Shopify** : lecture seule GraphQL avec droits minimaux et coffre local pour tokens ; comparaison données réelles/CSV.
 5. **V0.6 — Publishing** : connecteurs API officiels, brouillons privés et demandes d'approbation spécifiques par publication.
 6. **V0.7 — KDP** : mise en page export conforme, outils de contrôle des droits et des déclarations IA, soumission manuelle.
 7. **V1 — Production OS** : supervision unifiée, indicateurs réels, n8n auto-hébergé si les workflows le justifient.
 
-**Budget logiciel initial : 0 € hors consommation électrique/ordinateur/internet.** Les API externes, comptes, éventuels médias sous licence, puissance GPU et coûts de diffusion ne sont pas inclus.
+**Objectif budget : 0 € de dépense API obligatoire.** Les moteurs cloud peuvent consommer les quotas ou abonnements déjà associés aux comptes connectés ; une clé Gemini API potentiellement facturable est bloquée par défaut. Les coûts de matériel, électricité, internet, médias sous licence et diffusion ne sont pas inclus.
