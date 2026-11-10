@@ -14,6 +14,7 @@ import textwrap
 import urllib.error
 import urllib.request
 from pathlib import Path
+from functools import lru_cache
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -160,7 +161,12 @@ def stickman_skill_dir() -> Path:
 
 
 def stickman_status() -> dict:
-    skill = stickman_skill_dir()
+    return _stickman_status_cached(str(stickman_skill_dir()))
+
+
+@lru_cache(maxsize=4)
+def _stickman_status_cached(skill_path: str) -> dict:
+    skill = Path(skill_path)
     node = shutil.which("node")
     node_version = None
     if node:
