@@ -157,7 +157,7 @@ Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique 
 
 - Le Content Strategist doit fournir `## Voix off intégrale (à lire mot pour mot)` dans `content.md`.
 - Video Production extrait cette section et génère `narration.wav`, `narration.md`, `narration_metadata.json` et `voice_attribution.md`.
-- Si Piper n'est pas prêt, la mission reste créée avec `narration_blocker.md`. Le worker Stickman refuse de démarrer tant que le WAV local n'est pas prêt ; il ne remplace pas la voix par une API cloud.
+- Si Piper n'est pas prêt, la mission reste créée avec `narration_blocker.md`. Après installation, le bouton de démarrage régénère automatiquement le WAV à partir de `content.md`, actualise `stickman_request.md` et `stickman_job.json`, puis lance Stickman ; aucune nouvelle mission n'est nécessaire. Tant que Piper n'est pas prêt, le worker refuse de démarrer et ne remplace pas la voix par une API cloud.
 - Le WAV est copié dans `stickman_project/assets/audio/narration.wav` lorsque le projet Stickman existe. Le brief demande à l'agent d'utiliser exactement ce WAV, de le couper à 20 secondes pour l'aperçu et de réutiliser l'audio complet après approbation.
 - La validation de l'aperçu ne régénère pas la voix : le même WAV et les mêmes métadonnées sont exigés pour le rendu final.
 - Le panneau **Voix & narration — Piper TTS** affiche l'état du moteur, permet de choisir la voix, de renseigner les chemins Python/modèles si nécessaire et de générer un WAV de test.
