@@ -1,6 +1,9 @@
 """Offline structural tests; the real renderer is exercised separately on Windows."""
 import json
+import os
 import sys
+import tempfile
+from unittest.mock import patch
 import unittest
 from pathlib import Path
 
@@ -36,6 +39,32 @@ class StickmanBridgeTests(unittest.TestCase):
             self.assertEqual(shots[-1]["end"], 24.0)
             self.assertTrue(all(a["end"] == b["start"] for a, b in zip(shots, shots[1:])))
             self.assertTrue(all(any(layer.get("type") == "pose" for layer in s["layers"]) for s in shots))
+
+    def test_voice_profile_fixed_identity(self):
+        profile = stickman_btb.load_voice_profile()
+        self.assertEqual(profile["brand"], "Brain to Billions")
+        self.assertEqual(profile["narrator_key"], "brain-to-billions-main")
+        self.assertEqual(profile["voice_name"], "Microsoft Paul")
+        self.assertEqual(profile["provider"], "windows_sapi")
+        self.assertEqual(profile["approval_status"], "provisional")
+
+    def test_voice_profile_rejects_empty_identity(self):
+        profile = stickman_btb.load_voice_profile()
+        profile["voice_name"] = ""
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "voice.json"
+            config.write_text(json.dumps(profile), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                stickman_btb.load_voice_profile(config)
+
+    def test_no_silent_override_with_random_wav(self):
+        profile = stickman_btb.load_voice_profile()
+        with patch.dict(os.environ, {"STICKMAN_VOICE_WAV": "other-speaker.wav"}):
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(ValueError, "Voice Lock"):
+                    stickman_btb._produce_narration(
+                        "Un test de voix", Path(tmp), Path(tmp) / "narration.wav", profile
+                    )
 
     def test_missing_skill_is_explicit(self):
         self.assertTrue(callable(stickman_btb.find_skill))
