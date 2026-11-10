@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
 import engine_manager
+import quota_monitor
 import stickman_worker
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
@@ -75,7 +76,11 @@ class Handler(BaseHTTPRequestHandler):
                                "ollama_model": os.environ.get("OLLAMA_MODEL") or None,
                                "stickman": stickman_status(), "codex": stickman_worker.codex_status(),
                                "engines": engine_manager.get_engine_status(),
-                               "engine_settings": engine_manager.get_settings()})
+                               "engine_settings": engine_manager.get_settings(),
+                               "engine_quotas": {
+                                   key: quota_monitor.get_quota(key)
+                                   for key in engine_manager.PROVIDERS
+                               }})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -178,7 +183,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings = engine_manager.save_settings(data)
                 self.respond(200, {
                     "settings": settings,
-                    "engines": engine_manager.get_engine_status(refresh=True)
+                    "engines": engine_manager.get_engine_status(refresh=True),
+                    "quotas": {key: quota_monitor.get_quota(key) for key in engine_manager.PROVIDERS}
                 })
             except (ValueError, TypeError) as exc:
                 self.respond(400, {"error": str(exc)[:250]})
