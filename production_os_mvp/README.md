@@ -243,7 +243,9 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 ## Roadmap de branchement
 
 1. **V0.2 — Moteur de tâches** : validation humaine, décisions persistantes, historique et révisions ciblées intégrés.
-2. **V0.3 — Multi-moteur et vidéo** : routeur Codex / Antigravity / Ollama intégré ; test d'un MP4 réel à valider sur le PC cible, puis adaptateurs OpenShorts, Whisper local et Remotion.
+2. **V0.3 — Multi-moteur et vidéo** : routeur Codex / Antigravity / Ollama et worker Stickman.
+3. **V0.4 — Narration locale** : Piper TTS, voix française fixe, WAV de référence, attribution et contrôle audio intégrés au workflow Stickman.
+4. **V0.5 — Visuels** : connecteur ComfyUI local ; gestion et réutilisation des modèles et du style de marque.
 5. **V0.6 — Shopify** : lecture seule GraphQL avec droits minimaux et coffre local pour tokens ; comparaison données réelles/CSV.
 6. **V0.7 — Publishing** : connecteurs API officiels, brouillons privés et demandes d'approbation spécifiques par publication.
 7. **V0.8 — KDP** : mise en page export conforme, outils de contrôle des droits et des déclarations IA, soumission manuelle.
