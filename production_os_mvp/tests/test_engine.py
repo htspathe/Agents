@@ -132,6 +132,13 @@ class ProductionTests(unittest.TestCase):
             "## Voix off intégrale\nBienvenue sur Brain to Billions. Nous parlons de création de richesse.\n",
             encoding="utf-8"
         )
+        (folder / "stickman_request.md").write_text(
+            "## Blocage narration — Piper requis\\nAncien diagnostic Piper absent.\\n\\n## Consigne d'exécution\\nCréer l'aperçu.",
+            encoding="utf-8"
+        )
+        (folder / "stickman_job.json").write_text(
+            json.dumps({"narration_ready": False}), encoding="utf-8"
+        )
         settings = {"voice": "fr_FR-siwis-medium", "sentence_silence": 0.18}
         status = {"ready": True, "python_path": "python.exe", "voice_dir": "C:/voices"}
         def fake_synthesis(text, output_path, selected):
@@ -154,6 +161,11 @@ class ProductionTests(unittest.TestCase):
         self.assertTrue((folder / "voice_attribution.md").is_file())
         metadata = json.loads((folder / "narration_metadata.json").read_text(encoding="utf-8"))
         self.assertEqual(metadata["voice_license"], "CC BY 4.0")
+        request = (folder / "stickman_request.md").read_text(encoding="utf-8")
+        self.assertIn("Narration obligatoire — Piper local", request)
+        self.assertNotIn("Blocage narration — Piper requis", request)
+        manifest = json.loads((folder / "stickman_job.json").read_text(encoding="utf-8"))
+        self.assertTrue(manifest["narration_ready"])
 
     def test_youtube_storyboard(self):
         task = self.launch("youtube", "Comprendre le DCF")
