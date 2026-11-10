@@ -472,6 +472,28 @@ def start_worker(job_id: str, phase: str = "start") -> dict:
     expected = "awaiting_external" if phase == "start" else "render_authorized"
     if job["status"] != expected:
         raise ValueError(f"Action impossible : statut actuel {job['status']}, statut requis {expected}")
+
+    # A previous agent may have completed the MP4 but failed only when its
+    # sandboxed bridge tried to write SQLite. Recover the artifact directly
+    # from the dashboard action before checking providers or launching them.
+    recovered = _import_completed_output(job_id, phase, folder, job["status"])
+    if recovered:
+        waiting_state = "waiting_preview_approval" if phase == "start" else "waiting_final_review"
+        waiting_status = "awaiting_preview_approval" if phase == "start" else "awaiting_approval"
+        message = (
+            "Aperçu existant importé par Production OS ; validation humaine requise."
+            if phase == "start"
+            else "Rendu final existant importé par Production OS ; revue humaine requise."
+        )
+        current = _read_state(folder)
+        current.update({
+            "state": waiting_state, "phase": phase, "pid": os.getpid(),
+            "imported_by_worker": True, "import_result": recovered, "message": message
+        })
+        _write_state(folder, current)
+        engine.add_event(job_id, "stickman_worker", waiting_status, message)
+        return {"id": job_id, "state": waiting_state, "recovered": True}
+
     try:
         narration = piper_tts.ensure_job_narration(folder, config, phase=phase)
     except piper_tts.PiperError as exc:
