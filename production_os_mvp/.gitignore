@@ -6,3 +6,8 @@ outputs/*
 inbox/*
 !inbox/.gitkeep
 .env
+
+# Local Stickman runtime and agent-skill junctions
+tools/stickman-video-director/
+.agents/skills/directing-stickman-videos/
+.claude/skills/directing-stickman-videos/
