@@ -321,10 +321,36 @@ class ProductionTests(unittest.TestCase):
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
         self.assertEqual(args[-4:], ["exec", "--skip-git-repo-check", "--json", "-"])
 
+    def test_engine_manager_defaults_to_qwen25_3b_for_low_memory_windows(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".production_os_engines.json"
+            config.write_text(json.dumps({"ollama_model": ""}), encoding="utf-8")
+            with mock.patch.dict(__import__("os").environ, {"OLLAMA_MODEL": "", "STICKMAN_CODEX_MODEL": ""}), \
+                 mock.patch.object(engine_manager, "settings_path", return_value=config):
+                settings = engine_manager.get_settings()
+        self.assertEqual(settings["ollama_model"], "qwen2.5:3b")
+
+    def test_engine_manager_ollama_api_is_ready_without_cli_when_model_is_installed(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "models": [{"name": "qwen2.5:3b", "model": "qwen2.5:3b"}]
+        }).encode("utf-8")
+        with mock.patch.object(engine_manager, "find_ollama", return_value=None), \
+             mock.patch.object(engine_manager, "_version", return_value=None), \
+             mock.patch.object(engine_manager, "find_codex", return_value="codex"), \
+             mock.patch.object(engine_manager.urllib.request, "urlopen", return_value=response):
+            status = engine_manager._ollama_info("qwen2.5:3b")
+        self.assertTrue(status["installed"])
+        self.assertFalse(status["cli_installed"])
+        self.assertTrue(status["service_running"])
+        self.assertTrue(status["ready"])
+        self.assertTrue(status["agent_ready"])
+        self.assertIn("API Ollama prête", status["note"])
+
     def test_engine_manager_default_chain_and_manual_mode(self):
         defaults = {
             "primary": "codex", "fallbacks": ["antigravity", "ollama"],
-            "auto_fallback": True, "ollama_model": ""
+            "auto_fallback": True, "ollama_model": "qwen2.5:3b"
         }
         self.assertEqual(engine_manager.provider_order(defaults), ["codex", "antigravity", "ollama"])
         manual = {**defaults, "primary": "antigravity", "auto_fallback": False}
