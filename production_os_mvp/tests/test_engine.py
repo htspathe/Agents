@@ -99,7 +99,7 @@ class ProductionTests(unittest.TestCase):
         folder = Path(engine.ROOT) / "outputs" / "piper-english"
         folder.mkdir(parents=True)
         (folder / "content.md").write_text(
-            "## Voix off intégrale\\nToday we explain compound interest.\\n",
+            "## Voix off intégrale\nToday we explain compound interest.\n",
             encoding="utf-8"
         )
         with mock.patch.object(piper_tts, "get_settings", return_value={"voice": "fr_FR-siwis-medium"}):
