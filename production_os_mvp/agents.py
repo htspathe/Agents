@@ -244,13 +244,14 @@ def video(ctx, folder):
         bridge_cli = str(ROOT / "stickman_bridge.py")
         autopilot_cli = str(stickman_skill_dir() / "scripts" / "autopilot.mjs")
         mission_dir = str(folder.resolve())
+        skill_file = str(stickman_skill_dir() / "SKILL.md")
         request = f"""# Production OS vers Stickman Video Director
 
 ## Mission
 - Identifiant Production OS : {ctx.get('job_id', 'voir le dossier parent')}
-- Workspace à ouvrir dans Codex/Claude Code : {ROOT}
+- Workspace Codex (écriture limitée au dossier de mission) : {mission_dir}
 - Dossier de travail de la mission : {mission_dir}
-- Skill installé dans le workspace : .agents/skills/directing-stickman-videos ou .claude/skills/directing-stickman-videos
+- Skill source à lire (lecture seule) : {skill_file}
 - Pont Production OS : {bridge_cli}
 - Chaîne : {channel}
 - Sujet : {ctx['brief']}
