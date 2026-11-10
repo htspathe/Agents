@@ -100,9 +100,8 @@ class ProductionTests(unittest.TestCase):
         with mock.patch.object(stickman_worker, "codex_status", return_value={
             "installed": True, "path": "codex.exe", "version": "test"
         }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}), \
-             mock.patch.object(stickman_worker.subprocess, "Popen") as popen, \
-             mock.patch.object(stickman_worker, "_pid_alive", return_value=True):
-            popen.return_value.pid = 424242
+             mock.patch.object(stickman_worker.subprocess, "Popen") as popen:
+            popen.return_value.pid = __import__("os").getpid()
             result = stickman_worker.start_worker(task["id"], "start")
         self.assertEqual(result["state"], "starting")
         self.assertEqual(result["phase"], "start")
