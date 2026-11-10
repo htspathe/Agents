@@ -215,6 +215,7 @@ production_os_mvp/
   stickman_worker.py    # Lance/reprend Stickman via Codex, Antigravity ou Ollama
   piper_tts.py          # Détection Piper, extraction du script, génération WAV et attribution
   install_piper_windows.ps1 # Environnement Python 3.12 isolé + voix française
+  install_media_stack_windows.ps1 # Vérifie FFmpeg/FFprobe puis installe Piper
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
