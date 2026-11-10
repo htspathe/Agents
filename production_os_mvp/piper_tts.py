@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SETTINGS_FILE = ".production_os_piper.json"
 DEFAULT_VOICE = "fr_FR-siwis-medium"
+SUPPORTED_VOICES = {DEFAULT_VOICE}
 VOICE_PATTERN = re.compile(r"^[a-z]{2}_[A-Z]{2}-[a-z0-9_-]+-(?:x_low|low|medium|high)$")
 VOICE_LICENSE = "CC BY 4.0"
 ENGINE_LICENSE = "GPL-3.0-or-later"
@@ -38,7 +39,7 @@ def get_settings():
             if isinstance(data.get("enabled"), bool):
                 result["enabled"] = data["enabled"]
             voice = data.get("voice")
-            if isinstance(voice, str) and VOICE_PATTERN.fullmatch(voice.strip()):
+            if isinstance(voice, str) and voice.strip() in SUPPORTED_VOICES:
                 result["voice"] = voice.strip()
             for key in ("python_path", "voice_dir"):
                 if isinstance(data.get(key), str):
@@ -62,8 +63,8 @@ def save_settings(data):
     silence = data.get("sentence_silence", old["sentence_silence"])
     if not isinstance(enabled, bool):
         raise ValueError("Le paramètre d'activation Piper doit être booléen.")
-    if not isinstance(voice, str) or not VOICE_PATTERN.fullmatch(voice.strip()):
-        raise ValueError("Identifiant de voix Piper invalide.")
+    if not isinstance(voice, str) or voice.strip() not in SUPPORTED_VOICES:
+        raise ValueError("Voix non configurée dans le catalogue Production OS. La voix disponible est fr_FR-siwis-medium.")
     if not isinstance(python_path, str) or len(python_path.strip()) > 1000:
         raise ValueError("Chemin Python Piper invalide.")
     if not isinstance(voice_dir, str) or len(voice_dir.strip()) > 1000:
