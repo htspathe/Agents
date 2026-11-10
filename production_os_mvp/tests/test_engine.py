@@ -244,7 +244,7 @@ class ProductionTests(unittest.TestCase):
              mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_provider):
             result = stickman_worker.run_worker(task["id"], "start")
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 0, stickman_worker.get_status(task["id"]))
         self.assertEqual([call[0] for call in calls], ["codex", "antigravity"])
         self.assertEqual(calls[1][2], "codex")
         worker = stickman_worker.get_status(task["id"])
@@ -284,7 +284,7 @@ class ProductionTests(unittest.TestCase):
              mock.patch.object(stickman_worker, "_run_provider", side_effect=fake_run):
             result = stickman_worker.run_worker(task["id"], "start")
 
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 0, stickman_worker.get_status(task["id"]))
         self.assertEqual(called, [("antigravity", "codex")])
         self.assertIn(("codex", 5), quota_calls)
         worker = stickman_worker.get_status(task["id"])
