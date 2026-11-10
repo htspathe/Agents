@@ -479,9 +479,14 @@ def kdp(ctx, folder):
 
 def publishing(ctx, folder):
     items = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file() and not p.is_symlink())
-    manifest_status = ("AWAITING_STICKMAN_RENDER"
-                       if ctx["workflow"] == "youtube" and ctx.get("stickman_enabled", True)
-                       else "AWAITING_MANUAL_APPROVAL")
+    final_assets_present = (
+        (folder / "stickman_final.mp4").is_file()
+        and any((folder / name).is_file() for name in ("stickman_subtitles.srt", "stickman_subtitles.vtt"))
+    )
+    if ctx["workflow"] == "youtube" and ctx.get("stickman_enabled", True):
+        manifest_status = "AWAITING_FINAL_APPROVAL" if final_assets_present else "AWAITING_STICKMAN_RENDER"
+    else:
+        manifest_status = "AWAITING_MANUAL_APPROVAL"
     manifest = {"workflow": ctx["workflow"], "brief": ctx["brief"],
                 "status": manifest_status, "auto_publish": False,
                 "files_at_manifest_time": items,
@@ -503,7 +508,11 @@ def quality(ctx, folder):
         issues.append("Manuscrit complet, droits et couverture imprimable non vérifiés")
     if ctx["workflow"] == "youtube":
         issues.append("Sources factuelles et métrages définitifs non vérifiés")
-        if "stickman_request.md" in files:
+        final_video_present = any(Path(name).name == "stickman_final.mp4" for name in files)
+        captions_present = any(Path(name).suffix.lower() in {".srt", ".vtt"} for name in files)
+        if final_video_present and captions_present:
+            issues.append("Rendu final Stickman et sous-titres reçus : revue humaine finale requise")
+        elif "stickman_request.md" in files:
             issues.append("Passerelle Stickman préparée : aperçu audio/vidéo et rendu final encore à produire puis à faire approuver")
         else:
             issues.append("Passerelle Stickman absente")
