@@ -313,6 +313,8 @@ def get_engine_status(refresh: bool = False) -> dict:
         },
         "ollama": _ollama_info(settings.get("ollama_model", "")),
     }
+    for provider in PROVIDERS:
+        result[provider]["quota"] = get_provider_quota(provider, refresh=refresh)
     with _STATUS_LOCK:
         _STATUS_CACHE = result
         _STATUS_CACHE_AT = time.monotonic()
