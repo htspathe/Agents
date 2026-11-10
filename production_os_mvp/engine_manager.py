@@ -25,6 +25,7 @@ DEFAULT_SETTINGS = {
     "auto_fallback": True,
     "ollama_model": "",
     "allow_gemini_api_key": False,
+    "switch_at_remaining_percent": 5,
 }
 _STATUS_LOCK = threading.Lock()
 _STATUS_CACHE: dict | None = None
@@ -66,6 +67,9 @@ def get_settings() -> dict:
                 result["ollama_model"] = stored["ollama_model"].strip()[:120]
             if isinstance(stored.get("allow_gemini_api_key"), bool):
                 result["allow_gemini_api_key"] = stored["allow_gemini_api_key"]
+            threshold = stored.get("switch_at_remaining_percent")
+            if type(threshold) is int and 1 <= threshold <= 50:
+                result["switch_at_remaining_percent"] = threshold
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -97,12 +101,16 @@ def save_settings(data: dict) -> dict:
     allow_gemini_api_key = data.get("allow_gemini_api_key", False)
     if not isinstance(allow_gemini_api_key, bool):
         raise ValueError("L'autorisation Gemini API doit être un booléen")
+    threshold = data.get("switch_at_remaining_percent", 5)
+    if type(threshold) is not int or not 1 <= threshold <= 50:
+        raise ValueError("Le seuil de quota doit être un entier entre 1 et 50 %")
     settings = {
         "primary": primary,
         "fallbacks": fallbacks,
         "auto_fallback": auto_fallback,
         "ollama_model": model.strip(),
         "allow_gemini_api_key": allow_gemini_api_key,
+        "switch_at_remaining_percent": threshold,
     }
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -424,10 +432,22 @@ def generate_text(prompt: str, fallback: str, ctx: dict) -> str:
         "antigravity": _generate_antigravity,
         "ollama": _generate_ollama,
     }
+    # Late import avoids a cycle: quota_monitor uses engine_manager's binary discovery.
+    import quota_monitor
     for provider in provider_order(settings):
         if not status.get(provider, {}).get("ready"):
             attempted.append(f"{provider}: non disponible")
             continue
+        if settings.get("auto_fallback", True):
+            low, info = quota_monitor.quota_exhausted_soon(
+                provider, settings.get("switch_at_remaining_percent", 5)
+            )
+            if low:
+                attempted.append(
+                    f"{provider}: quota {info['remaining_percent']} % restant, "
+                    f"seuil {settings.get('switch_at_remaining_percent', 5)} %"
+                )
+                continue
         try:
             answer = generators[provider](prompt[:9000])
             ctx.setdefault("notes", []).append(f"Génération de texte via {provider}.")
