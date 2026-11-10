@@ -13,6 +13,7 @@ import engine
 import agents
 import stickman_bridge
 import stickman_worker
+import engine_manager
 from unittest import mock
 
 
@@ -20,7 +21,7 @@ class ProductionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="production-os-test-")
-        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT)
+        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT)
         root = Path(cls.tmp.name)
         (root / "knowledge").mkdir()
         (root / "samples").mkdir()
@@ -30,13 +31,15 @@ class ProductionTests(unittest.TestCase):
         for file in (source / "knowledge").glob("*.md"):
             shutil.copy2(file, root / "knowledge" / file.name)
         shutil.copy2(source / "samples" / "clogz_catalog_demo.csv", root / "samples" / "clogz_catalog_demo.csv")
-        engine.ROOT, agents.ROOT, app.ROOT = root, root, root
+        engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT = root, root, root, root
         engine.DB = root / "test.sqlite3"
+        engine_manager.invalidate_status_cache()
         engine.init()
 
     @classmethod
     def tearDownClass(cls):
-        engine.ROOT, engine.DB, agents.ROOT, app.ROOT = cls.old
+        engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT = cls.old
+        engine_manager.invalidate_status_cache()
         cls.tmp.cleanup()
 
     def launch(self, workflow, brief="Exemple de production contrôlée", **kwargs):
@@ -97,8 +100,12 @@ class ProductionTests(unittest.TestCase):
 
     def test_stickman_worker_can_be_started_from_dashboard(self):
         task = self.launch("youtube", "Comprendre la valorisation d'une entreprise")
-        with mock.patch.object(stickman_worker, "codex_status", return_value={
-            "installed": True, "path": "codex.exe", "version": "test"
+        with mock.patch.object(engine_manager, "get_settings", return_value={
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": ""
+        }), mock.patch.object(engine_manager, "get_engine_status", return_value={
+            "codex": {"ready": True}, "antigravity": {"ready": False},
+            "ollama": {"ready": False, "agent_ready": False}
         }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}), \
              mock.patch.object(stickman_worker.subprocess, "Popen") as popen:
             popen.return_value.pid = __import__("os").getpid()
@@ -111,6 +118,21 @@ class ProductionTests(unittest.TestCase):
         state = stickman_worker.get_status(task["id"])
         self.assertEqual(state["state"], "starting")
 
+    def test_stickman_worker_can_start_with_antigravity_when_codex_missing(self):
+        task = self.launch("youtube", "Tester le moteur Gemini de secours")
+        with mock.patch.object(engine_manager, "get_settings", return_value={
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": ""
+        }), mock.patch.object(engine_manager, "get_engine_status", return_value={
+            "codex": {"ready": False}, "antigravity": {"ready": True},
+            "ollama": {"ready": False, "agent_ready": False}
+        }), mock.patch.object(agents, "stickman_status", return_value={"runtime_ready": True}), \
+             mock.patch.object(stickman_worker.subprocess, "Popen") as popen:
+            popen.return_value.pid = __import__("os").getpid()
+            result = stickman_worker.start_worker(task["id"], "start")
+        self.assertEqual(result["state"], "starting")
+        self.assertEqual(result["phase"], "start")
+
     def test_stickman_worker_codex_command_keeps_sandbox(self):
         args = stickman_worker.build_codex_args("start", Path(engine.ROOT))
         self.assertIn("--sandbox", args)
@@ -120,6 +142,68 @@ class ProductionTests(unittest.TestCase):
         self.assertNotIn("--yolo", args)
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
         self.assertEqual(args[-3:], ["exec", "--json", "-"])
+
+    def test_engine_manager_default_chain_and_manual_mode(self):
+        defaults = {
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": ""
+        }
+        self.assertEqual(engine_manager.provider_order(defaults), ["codex", "antigravity", "ollama"])
+        manual = {**defaults, "primary": "antigravity", "auto_fallback": False}
+        self.assertEqual(engine_manager.provider_order(manual), ["antigravity"])
+
+    def test_engine_manager_saves_non_secret_settings_and_deduplicates(self):
+        settings = engine_manager.save_settings({
+            "primary": "antigravity",
+            "fallbacks": ["codex", "codex", "antigravity", "ollama"],
+            "auto_fallback": True,
+            "ollama_model": "qwen3:8b"
+        })
+        self.assertEqual(settings["fallbacks"], ["codex", "ollama"])
+        self.assertEqual(settings["ollama_model"], "qwen3:8b")
+        self.assertTrue(engine_manager.settings_path().is_file())
+        with self.assertRaises(ValueError):
+            engine_manager.save_settings({"primary": "unknown", "fallbacks": []})
+
+    def test_engine_manager_detects_quota_and_service_errors(self):
+        self.assertTrue(engine_manager.should_fallback("HTTP 429: resource exhausted"))
+        self.assertTrue(engine_manager.should_fallback("authentication required"))
+        self.assertFalse(engine_manager.should_fallback("The output file was not created"))
+
+    def test_engine_manager_text_generation_falls_back_to_antigravity(self):
+        settings = {
+            "primary": "codex", "fallbacks": ["antigravity", "ollama"],
+            "auto_fallback": True, "ollama_model": ""
+        }
+        status = {
+            "codex": {"ready": True}, "antigravity": {"ready": True},
+            "ollama": {"ready": False}
+        }
+        ctx = {"notes": []}
+        with mock.patch.object(engine_manager, "get_settings", return_value=settings), \
+             mock.patch.object(engine_manager, "get_engine_status", return_value=status), \
+             mock.patch.object(engine_manager, "_generate_codex", side_effect=engine_manager.ProviderError("codex", "429 quota exhausted")), \
+             mock.patch.object(engine_manager, "_generate_antigravity", return_value="Texte généré par Gemini"):
+            answer = engine_manager.generate_text("Rédige un paragraphe", "gabarit", ctx)
+        self.assertEqual(answer, "Texte généré par Gemini")
+        self.assertTrue(any("antigravity" in note for note in ctx["notes"]))
+
+    def test_worker_ollama_uses_local_codex_harness(self):
+        args = stickman_worker.build_codex_args(
+            "start", Path(engine.ROOT), provider="ollama", model="qwen3:8b"
+        )
+        self.assertIn("--oss", args)
+        self.assertIn("--local-provider", args)
+        self.assertIn("ollama", args)
+        self.assertIn("qwen3:8b", args)
+
+    def test_worker_antigravity_uses_headless_sandbox_without_permission_bypass(self):
+        args = stickman_worker.build_antigravity_args("start", "Créer un aperçu")
+        self.assertIn("--output-format", args)
+        self.assertIn("stream-json", args)
+        self.assertIn("--mode=auto", args)
+        self.assertIn("--sandbox", args)
+        self.assertNotIn("--dangerously-skip-permissions", args)
 
     def test_stickman_worker_rejects_director_route(self):
         task = self.launch("youtube", "Test route Director", stickman_mode="director", stickman_style="A6")
