@@ -66,10 +66,14 @@ def new_job(data: dict) -> str:
     if status_count["running"] + status_count["queued"] >= 10:
         raise ValueError("File de missions pleine : maximum 10 en attente/en exécution")
     job_id = uuid.uuid4().hex[:12]
+    voice_language = safe_text(data.get("voice_language", "fr"), 10)
+    if typ == "brain_to_billions" and voice_language not in ("fr", "en"):
+        raise ValueError("Langue de voix invalide (fr/en)")
     clean = {"workflow": typ, "brief": brief, "source_file": safe_text(data.get("source_file"), 170),
              "rights_confirmed": bool(data.get("rights_confirmed")),
              "start": data.get("start", 0), "end": data.get("end", 10),
-             "narration": safe_text(data.get("narration"), 2400) if typ == "brain_to_billions" else ""}
+             "narration": safe_text(data.get("narration"), 2400) if typ == "brain_to_billions" else "",
+             "voice_language": voice_language if typ == "brain_to_billions" else "fr"}
     with LOCK, connect() as db:
         db.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)",
                    (job_id, typ, brief, json.dumps(clean), "queued", now(), now(), None))
