@@ -1,6 +1,6 @@
-# Production OS — MVP local V0.3
+# Production OS — MVP local V0.4
 
-**Statut : MVP local avec worker multi-moteur Codex / Antigravity-Gemini / Ollama ; le premier test de bout en bout reste à valider sur le PC Windows cible.**
+**Statut : MVP local avec routage multi-moteur, Stickman et narration Piper TTS intégrée ; le premier test audio/vidéo de bout en bout reste à valider sur le PC Windows cible.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
 
@@ -13,7 +13,7 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
 - **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
-- **Video Production + Stickman** : le worker choisit le moteur principal, bascule sur Antigravity/Gemini ou Ollama en cas d'erreur fournisseur reconnue, conserve les checkpoints de la mission, importe l'aperçu, attend l'approbation humaine et reprend le rendu final. Aucun achat, crédit ou publication n'est déclenché.
+- **Video Production + Stickman + Piper** : le Content Strategist produit une section de voix off dédiée ; Piper génère un WAV local avec une voix fixe ; le worker Stickman reçoit ce WAV comme narration de référence, conserve les checkpoints, importe l'aperçu, attend l'approbation humaine et reprend le rendu final avec le même fichier audio. Aucun achat, crédit ou publication n'est déclenché.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -53,6 +53,30 @@ ffprobe -version
 ```
 
 Aucun Docker, n8n ou autre service n'est obligatoire au lancement de ce MVP.
+
+### Installer Piper TTS (Windows)
+
+Piper est le moteur de narration local de Brain to Billions. Il est isolé dans un environnement Python 3.12 séparé du Python principal de Production OS ; le dashboard peut donc continuer à utiliser Python 3.15.
+
+Depuis PowerShell, dans le dossier `production_os_mvp` :
+
+```powershell
+winget install --id Python.Python.3.12 -e
+powershell -ExecutionPolicy Bypass -File .\install_piper_windows.ps1
+```
+
+Le script crée `%LOCALAPPDATA%\ProductionOS\Piper\.venv`, installe `piper-tts`, télécharge `fr_FR-siwis-medium` et écrit la configuration locale `.production_os_piper.json`. Si tu as déjà suivi l'ancienne installation sous `C:\Tools\Piper`, le diagnostic sait aussi détecter ce chemin. Les modèles vocaux et paramètres locaux ne sont jamais poussés sur GitHub.
+
+Vérifier le moteur :
+
+```powershell
+py -3 .\piper_tts.py status
+py -3 .\piper_tts.py test
+```
+
+Le WAV de test est généré dans `.production_os_runtime\piper_test.wav`. Tu peux aussi enregistrer les paramètres et lancer **Générer un test vocal** depuis le panneau **Voix & narration — Piper TTS** du dashboard.
+
+**Voix de Brain to Billions :** `fr_FR-siwis-medium`. Le modèle vocal est sous CC BY 4.0 : une attribution SIWIS est incluse automatiquement dans `voice_attribution.md` pour chaque mission. Le moteur logiciel Piper est sous GPL-3.0-or-later ; sa licence est distincte de celle du modèle vocal. Consulte la fiche du modèle avant toute redistribution du modèle lui-même : https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/medium.
 
 ## Moteurs IA et basculement automatique
 
@@ -129,6 +153,15 @@ Le script clone le dépôt officiel dans `tools/stickman-video-director`, instal
 
 Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique des dépendances manquantes, corrige-les puis relance le script. Après installation, redémarre Production OS pour actualiser l'état affiché sur le dashboard.
 
+### Narration Piper dans le workflow YouTube
+
+- Le Content Strategist doit fournir `## Voix off intégrale (à lire mot pour mot)` dans `content.md`.
+- Video Production extrait cette section et génère `narration.wav`, `narration.md`, `narration_metadata.json` et `voice_attribution.md`.
+- Si Piper n'est pas prêt, la mission reste créée avec `narration_blocker.md`. Le worker Stickman refuse de démarrer tant que le WAV local n'est pas prêt ; il ne remplace pas la voix par une API cloud.
+- Le WAV est copié dans `stickman_project/assets/audio/narration.wav` lorsque le projet Stickman existe. Le brief demande à l'agent d'utiliser exactement ce WAV, de le couper à 20 secondes pour l'aperçu et de réutiliser l'audio complet après approbation.
+- La validation de l'aperçu ne régénère pas la voix : le même WAV et les mêmes métadonnées sont exigés pour le rendu final.
+- Le panneau **Voix & narration — Piper TTS** affiche l'état du moteur, permet de choisir la voix, de renseigner les chemins Python/modèles si nécessaire et de générer un WAV de test.
+
 ### Utiliser Stickman depuis le dashboard
 
 1. Démarre Production OS normalement avec `py -3 app.py`, puis ouvre `http://127.0.0.1:8765`.
@@ -180,6 +213,8 @@ production_os_mvp/
   engine_manager.py     # Sélection des moteurs, statuts, quotas et basculement
   stickman_bridge.py    # Synchronise aperçu, autorisation de rendu et MP4 final
   stickman_worker.py    # Lance/reprend Stickman via Codex, Antigravity ou Ollama
+  piper_tts.py          # Détection Piper, extraction du script, génération WAV et attribution
+  install_piper_windows.ps1 # Environnement Python 3.12 isolé + voix française
   agents.py             # Agents, tâches et adaptateurs locaux
   index.html            # Interface locale
   tests/                # Tests automatisés
@@ -209,10 +244,9 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 
 1. **V0.2 — Moteur de tâches** : validation humaine, décisions persistantes, historique et révisions ciblées intégrés.
 2. **V0.3 — Multi-moteur et vidéo** : routeur Codex / Antigravity / Ollama intégré ; test d'un MP4 réel à valider sur le PC cible, puis adaptateurs OpenShorts, Whisper local et Remotion.
-3. **V0.4 — Visuels** : connecteur ComfyUI local ; gestion et réutilisation des modèles et du style de marque.
-4. **V0.5 — Shopify** : lecture seule GraphQL avec droits minimaux et coffre local pour tokens ; comparaison données réelles/CSV.
-5. **V0.6 — Publishing** : connecteurs API officiels, brouillons privés et demandes d'approbation spécifiques par publication.
-6. **V0.7 — KDP** : mise en page export conforme, outils de contrôle des droits et des déclarations IA, soumission manuelle.
-7. **V1 — Production OS** : supervision unifiée, indicateurs réels, n8n auto-hébergé si les workflows le justifient.
+5. **V0.6 — Shopify** : lecture seule GraphQL avec droits minimaux et coffre local pour tokens ; comparaison données réelles/CSV.
+6. **V0.7 — Publishing** : connecteurs API officiels, brouillons privés et demandes d'approbation spécifiques par publication.
+7. **V0.8 — KDP** : mise en page export conforme, outils de contrôle des droits et des déclarations IA, soumission manuelle.
+8. **V1 — Production OS** : supervision unifiée, indicateurs réels, n8n auto-hébergé si les workflows le justifient.
 
 **Objectif budget : 0 € de dépense API obligatoire.** Les moteurs cloud peuvent consommer les quotas ou abonnements déjà associés aux comptes connectés ; une clé Gemini API potentiellement facturable est bloquée par défaut. Les coûts de matériel, électricité, internet, médias sous licence et diffusion ne sont pas inclus.
