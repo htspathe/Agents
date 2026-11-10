@@ -303,8 +303,8 @@ def decide_job(job_id, action, note="", target_agent="orchestrator"):
     allowed_statuses = {
         "approve": {"awaiting_approval"},
         "approve_preview": {"awaiting_preview_approval"},
-        "request_changes": {"awaiting_approval", "awaiting_preview_approval", "changes_requested"},
-        "reject": {"awaiting_approval", "awaiting_preview_approval"}
+        "request_changes": {"awaiting_approval", "awaiting_preview_approval", "render_authorized", "changes_requested"},
+        "reject": {"awaiting_approval", "awaiting_preview_approval", "render_authorized"}
     }
     if job["status"] not in allowed_statuses[action]:
         raise ValueError("Cette décision n'est pas autorisée pour le statut actuel de la mission")
