@@ -125,6 +125,8 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(revision_input["start_agent"], "video")
         self.assertIn("Renforcer l'accroche", revision_input["correction_request"])
         self.assertTrue((engine.ROOT / "outputs" / revision_id / "stickman_project" / "output" / "approved-scene.png").is_file())
+        self.assertFalse((engine.ROOT / "outputs" / revision_id / "stickman_project" / "output" / "preview.mp4").exists())
+        self.assertFalse((engine.ROOT / "outputs" / revision_id / "stickman_preview.mp4").exists())
 
         engine.run_job(revision_id)
         revision = engine.job_detail(revision_id)
