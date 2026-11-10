@@ -62,10 +62,10 @@ Depuis PowerShell, dans le dossier `production_os_mvp` :
 
 ```powershell
 winget install --id Python.Python.3.12 -e
-powershell -ExecutionPolicy Bypass -File .\install_piper_windows.ps1
+powershell -ExecutionPolicy Bypass -File .\install_media_stack_windows.ps1
 ```
 
-Le script crée `%LOCALAPPDATA%\ProductionOS\Piper\.venv`, installe `piper-tts`, télécharge `fr_FR-siwis-medium` et écrit la configuration locale `.production_os_piper.json`. Si tu as déjà suivi l'ancienne installation sous `C:\Tools\Piper`, le diagnostic sait aussi détecter ce chemin. Les modèles vocaux et paramètres locaux ne sont jamais poussés sur GitHub.
+Le script vérifie/installe FFmpeg et FFprobe via winget, puis crée `%LOCALAPPDATA%\ProductionOS\Piper\.venv`, installe `piper-tts`, télécharge `fr_FR-siwis-medium` et écrit la configuration locale `.production_os_piper.json`. Si tu as déjà suivi l'ancienne installation sous `C:\Tools\Piper`, le diagnostic sait aussi détecter ce chemin. Les modèles vocaux et paramètres locaux ne sont jamais poussés sur GitHub.
 
 Vérifier le moteur :
 
