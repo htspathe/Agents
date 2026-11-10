@@ -121,6 +121,7 @@ def run_job(job_id: str) -> None:
     if not job or job["status"] != "queued":
         return
     ctx = json.loads(job["input_json"])
+    ctx["job_id"] = job_id
     ctx["notes"] = []
     folder = ROOT / "outputs" / job_id
     folder.mkdir(exist_ok=True)
