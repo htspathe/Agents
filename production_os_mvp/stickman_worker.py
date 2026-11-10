@@ -332,6 +332,19 @@ def _run_provider(
     recent = []
     monitor_stop = threading.Event()
     quota_trigger: dict = {}
+    # Preserve media tools for Codex/Antigravity child shells, including Windows
+    # installations that are discoverable in the Production OS server process.
+    process_env = os.environ.copy()
+    media_dirs = []
+    for tool_name in ("ffmpeg", "ffprobe"):
+        tool_path = shutil.which(tool_name)
+        if tool_path:
+            directory = str(Path(tool_path).resolve().parent)
+            if directory not in media_dirs:
+                media_dirs.append(directory)
+    if media_dirs:
+        process_env["PATH"] = os.pathsep.join([*media_dirs, process_env.get("PATH", "")])
+    process_env["PRODUCTION_OS_PYTHON"] = str(Path(sys.executable).resolve())
     with _log_path(folder).open("a", encoding="utf-8") as log:
         log.write(f"\n[{now()}] Démarrage {provider} ({phase}).\n")
         log.flush()
@@ -339,7 +352,8 @@ def _run_provider(
             command, cwd=str(folder.resolve()),
             stdin=subprocess.PIPE if send_prompt else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            encoding="utf-8", errors="replace", bufsize=1, shell=shell
+            encoding="utf-8", errors="replace", bufsize=1, shell=shell,
+            env=process_env
         )
         current = _read_state(folder)
         current.update({
