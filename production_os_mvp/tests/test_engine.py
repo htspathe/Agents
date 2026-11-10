@@ -1,0 +1,97 @@
+import json
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import app
+import engine
+import agents
+
+
+class ProductionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix="production-os-test-")
+        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT)
+        root = Path(cls.tmp.name)
+        (root / "knowledge").mkdir()
+        (root / "samples").mkdir()
+        (root / "inbox").mkdir()
+        (root / "outputs").mkdir()
+        source = Path(__file__).resolve().parents[1]
+        for file in (source / "knowledge").glob("*.md"):
+            shutil.copy2(file, root / "knowledge" / file.name)
+        shutil.copy2(source / "samples" / "clogz_catalog_demo.csv", root / "samples" / "clogz_catalog_demo.csv")
+        engine.ROOT, agents.ROOT, app.ROOT = root, root, root
+        engine.DB = root / "test.sqlite3"
+        engine.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        engine.ROOT, engine.DB, agents.ROOT, app.ROOT = cls.old
+        cls.tmp.cleanup()
+
+    def launch(self, workflow, brief="Exemple de production contrôlée", **kwargs):
+        job_id = engine.new_job({"workflow": workflow, "brief": brief, **kwargs})
+        engine.run_job(job_id)
+        return engine.job_detail(job_id)
+
+    def test_twelve_roles_registered(self):
+        self.assertEqual(len(agents.AGENTS), 12)
+        self.assertEqual(set(agents.HANDLERS), set(i for i, *_ in agents.AGENTS) - {"orchestrator"})
+
+    def test_clogz_campaign(self):
+        task = self.launch("clogz", "Promouvoir des chaussures confortables")
+        self.assertEqual(task["status"], "awaiting_approval")
+        files = {f["name"] for f in task["files"]}
+        self.assertTrue({"visual.svg", "customer_reply_draft.md", "shopify_offline_audit.json", "publishing_manifest.json", "qa_report.json"}.issubset(files))
+        folder = engine.ROOT / "outputs" / task["id"]
+        audit = json.loads((folder / "shopify_offline_audit.json").read_text())
+        self.assertFalse(audit["live_shopify_connected"])
+        self.assertFalse(json.loads((folder / "publishing_manifest.json").read_text())["auto_publish"])
+        self.assertFalse(json.loads((folder / "qa_report.json").read_text())["publication_ready"])
+
+    def test_kdp_outline_only(self):
+        task = self.launch("kdp", "Livre sur les finances personnelles")
+        self.assertEqual(task["status"], "awaiting_approval")
+        folder = engine.ROOT / "outputs" / task["id"]
+        data = json.loads((folder / "kdp_metadata_draft.json").read_text())
+        self.assertEqual(data["amazon_submission"], "NOT_READY")
+
+    def test_youtube_storyboard(self):
+        task = self.launch("youtube", "Comprendre le DCF")
+        self.assertEqual(task["status"], "awaiting_approval")
+        folder = engine.ROOT / "outputs" / task["id"]
+        data = json.loads((folder / "storyboard.json").read_text())
+        self.assertTrue(data["requires_original_footage"])
+
+    def test_invalid_workflow_and_no_rights(self):
+        with self.assertRaises(ValueError):
+            engine.new_job({"workflow": "unknown", "brief": "Une mission test"})
+        with self.assertRaises(ValueError):
+            engine.new_job({"workflow": "clipping", "brief": "Clip à extraire", "source_file": "source_demo.mp4"})
+
+    @unittest.skipUnless(agents.ffmpeg_ready(), "FFmpeg/ffprobe non installés")
+    def test_clipping_real_export(self):
+        path = app.make_demo_video()
+        self.assertTrue(path.exists())
+        task = self.launch("clipping", "Extraire un Short original", source_file="source_demo.mp4",
+                           rights_confirmed=True, start=1, end=4)
+        self.assertEqual(task["status"], "awaiting_approval", task.get("error"))
+        folder = engine.ROOT / "outputs" / task["id"]
+        data = agents.probe(folder / "short_vertical.mp4")
+        videos = [x for x in data["streams"] if x.get("codec_type") == "video"]
+        self.assertEqual((videos[0]["width"], videos[0]["height"]), (540, 960))
+
+    def test_traversal_is_blocked(self):
+        task = self.launch("clipping", "Essai path traversal", source_file="../secrets.mp4",
+                           rights_confirmed=True, start=0, end=1)
+        self.assertEqual(task["status"], "failed")
+
+
+if __name__ == "__main__":
+    unittest.main()
