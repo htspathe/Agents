@@ -354,7 +354,7 @@ def job_detail(job_id):
     job["files"] = [
         {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
         for p in sorted(folder.rglob("*"), key=lambda item: item.relative_to(folder).as_posix().casefold())
-        if p.is_file() and not p.is_symlink() and folder in p.resolve().parents
+        if p.is_file() and not p.is_symlink() and p.suffix.lower() in ARTIFACT_EXTENSIONS and folder in p.resolve().parents
     ] if folder.is_dir() else []
     job.pop("input_json", None)
     return job
