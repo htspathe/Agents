@@ -2,7 +2,7 @@
 
 Produces a fully encoded *review* MP4. It never uploads or claims editorial approval.
 Requires Node >=20, FFmpeg/FFprobe and installed directing-stickman-videos Skill.
-Windows SAPI is used only when no user-provided WAV is configured.
+Narration uses the pinned Qwen3-TTS synthetic reference; never Windows SAPI.
 """
 from __future__ import annotations
 
@@ -53,67 +53,16 @@ def _duration(media: Path) -> float:
     return duration
 
 
-VOICE_PROFILE_PATH = Path(__file__).resolve().with_name("brain_to_billions_voice.json")
+from qwen_btb_voice import (
+    PROFILE_PATH as VOICE_PROFILE_PATH,
+    load_profile as load_voice_profile,
+    synthesize as synthesize_voice,
+)
 
 
-def load_voice_profile(path: Path | None = None) -> dict:
-    """One account-level voice configuration, never auto-select another speaker."""
-    src = path or VOICE_PROFILE_PATH
-    profile = json.loads(src.read_text(encoding="utf-8"))
-    required = ("brand", "narrator_key", "provider", "voice_name", "language",
-                "speech_rate", "volume", "approval_status")
-    missing = [key for key in required if key not in profile]
-    if missing:
-        raise ValueError(f"Profil voix incomplet : {', '.join(missing)}")
-    if profile["provider"] != "windows_sapi":
-        raise ValueError("Ce MVP supporte uniquement le fournisseur Windows SAPI verrouillé.")
-    if not all(isinstance(profile[key], str) and profile[key].strip()
-               for key in ("narrator_key", "voice_name", "language")):
-        raise ValueError("Identité de voix ou langue vide dans le profil.")
-    if not isinstance(profile["speech_rate"], int) or not -10 <= profile["speech_rate"] <= 10:
-        raise ValueError("speech_rate hors limites SAPI")
-    if not isinstance(profile["volume"], int) or not 0 <= profile["volume"] <= 100:
-        raise ValueError("volume hors limites SAPI")
-    if profile["approval_status"] not in ("provisional", "approved"):
-        raise ValueError("Statut de voix inconnu.")
-    return profile
-
-
-def _produce_narration(script: str, folder: Path, wav: Path, profile: dict) -> str:
-    if os.environ.get("STICKMAN_VOICE_WAV", "").strip():
-        raise ValueError(
-            "Voice Lock actif : STICKMAN_VOICE_WAV contournerait le narrateur fixe. "
-            "Retirer cette variable et utiliser la voix configurée dans brain_to_billions_voice.json."
-        )
-    if sys.platform != "win32":
-        raise RuntimeError("Voice Lock Windows SAPI non disponible ici ; aucune voix de remplacement automatique.")
-    text_file = folder / "narration.txt"
-    text_file.write_text(script + "\n", encoding="utf-8")
-    escape = lambda value: str(value).replace("'", "''")
-    ps = folder / "_create_voice.ps1"
-    ps.write_text(
-        "Add-Type -AssemblyName System.Speech\n"
-        "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer\n"
-        f"$requiredName='{escape(profile['voice_name'])}'\n"
-        f"$requiredCulture='{escape(profile['language'])}'\n"
-        "$installed=@($s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Name -ceq $requiredName -and $_.VoiceInfo.Culture.Name -eq $requiredCulture })\n"
-        "if ($installed.Count -ne 1) { throw ('La voix verrouillee est absente : ' + $requiredName + ' / ' + $requiredCulture) }\n"
-        "$s.SelectVoice($requiredName)\n"
-        f"$s.Rate={profile['speech_rate']}\n"
-        f"$s.Volume={profile['volume']}\n"
-        f"$s.SetOutputToWaveFile('{escape(wav)}')\n"
-        "try { $s.Speak([System.IO.File]::ReadAllText("
-        f"'{escape(text_file)}',[System.Text.Encoding]::UTF8)) }} finally {{ $s.Dispose() }}\n",
-        encoding="utf-8-sig",
-    )
-    try:
-        _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-              "-File", str(ps)], timeout=180)
-    finally:
-        ps.unlink(missing_ok=True)
-    if not wav.is_file() or wav.stat().st_size < 5000:
-        raise RuntimeError("La voix verrouillée n'a pas produit de WAV utilisable.")
-    return f"{profile['provider']}:{profile['voice_name']} ({profile['language']})"
+def _produce_narration(script: str, folder: Path, wav: Path, profile: dict, language: str = "fr") -> str:
+    """Qwen3-TTS only: fixed synthetic reference for all Brain to Billions episodes."""
+    return synthesize_voice(script, wav, language, profile)
 
 
 def captions_for(script: str, duration: float) -> list[dict]:
@@ -222,7 +171,10 @@ def render(ctx: dict, folder: Path) -> str:
     write_text(folder, "narration.txt", script)
     wav = folder / "narration.wav"
     profile = load_voice_profile()
-    voice_name = _produce_narration(script, folder, wav, profile)
+    language = ctx.get("voice_language", "fr")
+    if language not in ("fr", "en"):
+        raise ValueError("Choisir le français ou l'anglais pour la voix.")
+    voice_name = _produce_narration(script, folder, wav, profile, language)
     duration = _duration(wav)
     if not 8 <= duration <= PREVIEW_LIMIT:
         raise RuntimeError(
@@ -251,6 +203,9 @@ def render(ctx: dict, folder: Path) -> str:
         "engine": "Stickman Video Director / Autopilot B1",
         "skill_dir": str(skill), "voice": voice_name,
         "narrator_key": profile["narrator_key"],
+        "voice_id": profile["voice_id"],
+        "voice_language": language,
+        "voice_reference_sha256": profile["reference_sha256"],
         "voice_lock_applied": True,
         "voice_approval_status": profile["approval_status"],
         "voice_profile_sha256": hashlib.sha256(VOICE_PROFILE_PATH.read_bytes()).hexdigest(),
