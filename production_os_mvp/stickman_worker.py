@@ -198,6 +198,9 @@ def _prompt(
     if not narration_path.is_file() or not narration_metadata_path.is_file():
         raise ValueError("Narration Piper absente : narration.wav et narration_metadata.json sont obligatoires.")
     narration_metadata = json.loads(narration_metadata_path.read_text(encoding="utf-8"))
+    ffmpeg_exe = shutil.which("ffmpeg") or "NON DÉTECTÉ"
+    ffprobe_exe = shutil.which("ffprobe") or "NON DÉTECTÉ"
+    python_exe = str(Path(sys.executable).resolve())
     narration_note = f"""
 NARRATION AUDIO IMPOSÉE — PIPER LOCAL
 - WAV de référence : {narration_path.resolve()}
@@ -206,6 +209,9 @@ NARRATION AUDIO IMPOSÉE — PIPER LOCAL
 - L'aperçu utilise les 20 premières secondes du WAV ; le rendu final utilise le fichier complet.
 - Les sous-titres doivent être alignés sur cet audio réel.
 - Attribution du modèle vocal : {narration_metadata.get('voice_attribution', '')}
+- Python de la mission : {python_exe} (ne pas invoquer py -3 ni WindowsApps).
+- FFmpeg : {ffmpeg_exe} ; FFprobe : {ffprobe_exe}. Ces chemins sont détectés par le worker local.
+- Si un shell agentique ne trouve pas FFmpeg dans son PATH, utilise le chemin absolu ci-dessus ou corrige le PATH de son processus ; vérifie ensuite les deux commandes, sans prétendre que le runtime est prêt par simple déclaration.
 """
     fallback_note = ""
     if fallback_from:
