@@ -126,12 +126,12 @@ Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique 
 8. Les fichiers, journaux et rapports restent disponibles dans **Mes productions**. Une approbation finale ne publie rien sur YouTube.
 
 **Prérequis et coûts :**
-- Codex CLI doit être installé et connecté. Le dashboard détecte le binaire, mais l'authentification n'est vérifiée qu'au premier lancement. Si nécessaire, définis `STICKMAN_CODEX_BIN` vers le chemin exact de `codex.cmd` ou `codex.exe`.
-- Le worker utilise le quota de ton compte Codex lorsque le fournisseur par défaut est utilisé. Ce n'est pas une API gratuite illimitée. Pour tenter une exécution locale via Ollama, définis `STICKMAN_CODEX_PROVIDER=ollama` et, si nécessaire, `STICKMAN_CODEX_MODEL` avant de démarrer Production OS ; le modèle doit déjà être installé et compatible avec Codex.
+- Au moins un moteur agentique doit être prêt : Codex CLI connecté, Antigravity CLI authentifié, ou Ollama local avec le harness Codex installé. Le dashboard détecte les binaires ; l'authentification cloud est vérifiée au premier lancement.
+- Le worker consomme les quotas du fournisseur sélectionné (Codex ou Antigravity). Pour un rendu agentique local, démarre Ollama, sélectionne un modèle téléchargé dans le panneau Moteurs IA et garde le CLI Codex installé comme harness local.
 - La génération d'images et de voix dépend des fournisseurs que le Skill peut réellement utiliser. Le worker n'achète aucun crédit, n'ouvre aucun abonnement et n'effectue aucun appel payant. S'il ne trouve pas de fournisseur local/gratuit déjà configuré, il doit produire un rapport de blocage au lieu de fabriquer une vidéo.
-- L'exécution Codex nécessite une connexion Internet lorsqu'elle utilise le service Codex avec ton compte. Le mode Ollama est la voie locale, sous réserve de la compatibilité du modèle et des outils.
+- Codex et Antigravity nécessitent Internet pour les modèles cloud. Ollama est local ; le modèle doit être compatible avec les outils de l'agent et la mémoire disponible.
 - Le worker web prend en charge Autopilot B1 à B4. B5 et Director/A6 ont des contrats et rendus spécifiques ; ils restent sur leur route dédiée tant que leur automatisation n'est pas intégrée.
-- Le worker utilise le sandbox `workspace-write`, sans option `--yolo` ni contournement du sandbox. Il ne publie pas, n'achète rien et ne modifie aucun compte externe.
+- Codex utilise le sandbox `workspace-write` et Antigravity son mode `--sandbox`, sans contournement des permissions. Le worker ne publie pas, n'achète rien et ne modifie aucun compte externe.
 
 
 ## Activer Ollama (facultatif)
