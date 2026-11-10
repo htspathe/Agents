@@ -268,6 +268,27 @@ def list_library(query="", workflow="", kind="", status=""):
         }
     }
 
+
+def update_manifest(job_id, status, decision=None, extra=None):
+    folder = (ROOT / "outputs" / job_id).resolve()
+    output_root = (ROOT / "outputs").resolve()
+    manifest_path = folder / "publishing_manifest.json"
+    if folder.parent != output_root or not manifest_path.is_file():
+        return
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["status"] = status
+        manifest["auto_publish"] = False
+        manifest["updated"] = now()
+        if decision:
+            manifest["human_decision"] = decision
+        if extra:
+            manifest.update(extra)
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    except (OSError, ValueError, TypeError):
+        # SQLite remains the source of truth if a generated manifest cannot be updated.
+        return
+
 def decide_job(job_id, action, note="", target_agent="orchestrator"):
     actions = {"approve": "approved", "approve_preview": "render_authorized",
                "request_changes": "changes_requested", "reject": "rejected"}
@@ -305,6 +326,13 @@ def decide_job(job_id, action, note="", target_agent="orchestrator"):
         db.execute("INSERT INTO events(job_id,agent,state,message,created) VALUES(?,?,?,?,?)",
                    (job_id, "human_review", status, message[:1100], now()))
         db.commit()
+    manifest_states = {"approve": "APPROVED_MANUAL_REVIEW",
+                       "approve_preview": "RENDER_AUTHORIZED",
+                       "request_changes": "CHANGES_REQUESTED",
+                       "reject": "REJECTED"}
+    update_manifest(job_id, manifest_states[action], {
+        "action": action, "note": note, "target_agent": target_agent, "created": now()
+    })
     return {"id": job_id, "status": status, "action": action, "target_agent": target_agent, "note": note}
 
 
