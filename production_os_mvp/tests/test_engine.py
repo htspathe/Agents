@@ -95,6 +95,19 @@ class ProductionTests(unittest.TestCase):
         data = json.loads((folder / "kdp_metadata_draft.json").read_text())
         self.assertEqual(data["amazon_submission"], "NOT_READY")
 
+    def test_piper_blocks_english_content_until_an_english_voice_is_configured(self):
+        folder = Path(engine.ROOT) / "outputs" / "piper-english"
+        folder.mkdir(parents=True)
+        (folder / "content.md").write_text(
+            "## Voix off intégrale\\nToday we explain compound interest.\\n",
+            encoding="utf-8"
+        )
+        with mock.patch.object(piper_tts, "get_settings", return_value={"voice": "fr_FR-siwis-medium"}):
+            result = piper_tts.prepare_job_narration(folder, {"language": "en"})
+        self.assertFalse(result["ready"])
+        self.assertIn("voix française", result["note"])
+        self.assertFalse((folder / "narration.wav").exists())
+
     def test_piper_rejects_voice_without_verified_attribution(self):
         with self.assertRaises(ValueError):
             piper_tts.save_settings({
