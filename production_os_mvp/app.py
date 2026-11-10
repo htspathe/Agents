@@ -9,12 +9,14 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
+import zipfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS
@@ -22,7 +24,7 @@ from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS
 TOKEN = secrets.token_urlsafe(36)
 MAX_UPLOAD = 300 * 1024 * 1024
 ALLOWED_UPLOADS = {".mp4", ".mov", ".mkv", ".webm"}
-ALLOWED_ARTIFACTS = {".json", ".md", ".txt", ".svg", ".mp4"}
+ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -70,6 +72,50 @@ class Handler(BaseHTTPRequestHandler):
                                "workflows": LABELS, "ffmpeg_installed": shutil.which("ffmpeg") is not None,
                                "ollama_model": os.environ.get("OLLAMA_MODEL") or None})
             return
+        if path == "/api/library":
+            params = parse_qs(urlsplit(self.path).query)
+            result = engine.list_library(
+                query=params.get("q", [""])[0],
+                workflow=params.get("workflow", [""])[0],
+                kind=params.get("kind", [""])[0],
+                status=params.get("status", [""])[0]
+            )
+            self.respond(200, result)
+            return
+        m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/export\.zip", path)
+        if m:
+            job_id = m.group(1)
+            job = engine.get_job(job_id)
+            folder = (ROOT / "outputs" / job_id).resolve()
+            output_root = (ROOT / "outputs").resolve()
+            if not job or folder.parent != output_root or not folder.is_dir():
+                self.respond(404, {"error": "Production introuvable"})
+                return
+            artifacts = []
+            for item in folder.iterdir():
+                if not item.is_file() or item.name.startswith(".") or item.suffix.lower() not in ALLOWED_ARTIFACTS:
+                    continue
+                resolved = item.resolve()
+                if resolved.parent == folder:
+                    artifacts.append(resolved)
+            if not artifacts:
+                self.respond(404, {"error": "Aucun livrable à exporter"})
+                return
+            with tempfile.TemporaryDirectory(prefix="production-os-export-") as temp_dir:
+                archive = Path(temp_dir) / f"production-os-{job_id}.zip"
+                with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+                    for artifact in artifacts:
+                        bundle.write(artifact, arcname=artifact.name)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="production-os-{job_id}.zip"')
+                self.send_header("Content-Length", str(archive.stat().st_size))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                with archive.open("rb") as source:
+                    shutil.copyfileobj(source, self.wfile, length=256*1024)
+            return
         m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})", path)
         if m:
             detail = engine.job_detail(m.group(1))
@@ -83,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
             if not target.is_file() or target.parent != root or target.suffix.lower() not in ALLOWED_ARTIFACTS:
                 self.respond(404, {"error": "Fichier indisponible"})
                 return
-            typ = {".svg": "image/svg+xml", ".md": "text/markdown", ".mp4": "video/mp4", ".json": "application/json"}.get(target.suffix.lower(), "text/plain")
+            typ = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             # SVG produced by this program but opening it in same origin is not necessary.
             if target.suffix.lower() == ".svg":
                 typ = "application/octet-stream"
