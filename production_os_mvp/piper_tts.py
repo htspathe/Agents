@@ -204,6 +204,53 @@ def extract_voiceover(markdown):
     return re.sub(r"\s+", " ", " ".join(lines)).strip()
 
 
+def _curated_topic_narration(brief):
+    """Conservative local backup for the documented Brain to Billions pilot only.
+
+    Other topics must get an actual narration from the Content Strategist.
+    No fabricated generic speech is sent to Piper.
+    """
+    brief = str(brief or "").lower()
+    if not any(term in brief for term in (
+        "inflation du train de vie", "lifestyle inflation",
+        "restent pauvres malgré l'augmentation", "restent pauvres malgré l’augmentation"
+    )):
+        return ""
+    return (
+        "Tu gagnes plus qu'avant, mais à la fin du mois, il ne te reste toujours rien. "
+        "Le problème n'est pas forcément ton salaire. C'est peut-être l'inflation de ton train de vie. "
+        "Voici le mécanisme. Ton revenu augmente. Tu changes de téléphone, tu multiplies les livraisons, "
+        "tu choisis un logement plus cher. Chaque dépense semble raisonnable. Mais toutes ensemble, "
+        "elles absorbent ton augmentation. Ton niveau de vie monte, tandis que ta capacité à épargner "
+        "ne progresse presque pas. La solution n'est pas de refuser de te faire plaisir. "
+        "C'est de décider, dès ton augmentation, quelle part ira à l'épargne ou à un projet, "
+        "avant d'ajouter de nouvelles dépenses. Automatise ce transfert, puis construis ton budget "
+        "avec ce qui reste. Gagner plus peut t'aider à devenir plus libre. "
+        "À condition que chaque euro supplémentaire ne devienne pas une nouvelle facture."
+    )
+
+
+def _narration_source(content, ctx):
+    """Return (spoken text, source, error); never approve a generic mission-intro."""
+    spoken = extract_voiceover(content)
+    words = re.findall(r"\b[\wÀ-ÿ'-]+\b", spoken)
+    generic = any(term in spoken.lower() for term in (
+        "mission test", "tu es l'équipe de production", "aujourd'hui, nous allons comprendre :",
+        "aujourd’hui, nous allons comprendre :"
+    ))
+    if len(words) >= 55 and not generic:
+        return spoken, "content.md", None
+    curated = _curated_topic_narration(ctx.get("brief") or ctx.get("topic"))
+    if curated:
+        return curated, "curated_brain_to_billions_pilot", None
+    return "", "blocked", (
+        "La voix off de content.md est absente, trop courte ou générique "
+        f"({len(words)} mots). Fournis au moins une narration substantielle d'environ "
+        "une minute dans la section « ## Voix off intégrale », en rapport avec le sujet. "
+        "Aucun WAV générique ne sera utilisé comme aperçu."
+    )
+
+
 def _wav_info(path):
     try:
         with wave.open(str(path), "rb") as audio:
@@ -337,12 +384,10 @@ def prepare_job_narration(folder, ctx, force=False):
         return info
     content_file = folder / "content.md"
     content = content_file.read_text(encoding="utf-8") if content_file.is_file() else ""
-    narration = extract_voiceover(content)
-    if not narration:
-        note = ("Aucune section de narration dédiée n'a été trouvée dans content.md.\n"
-                "Le Content Strategist doit produire une section « Voix off intégrale » avant Piper.\n")
-        (folder / "narration_blocker.md").write_text(note, encoding="utf-8")
-        info = {"ready": False, "note": note.strip(), "voice": get_settings()["voice"]}
+    narration, narration_source, narration_error = _narration_source(content, ctx)
+    if narration_error:
+        (folder / "narration_blocker.md").write_text(narration_error + "\n", encoding="utf-8")
+        info = {"ready": False, "note": narration_error, "voice": get_settings()["voice"]}
         _update_mission_files(folder, info)
         return info
     settings, status = get_settings(), get_status(refresh=True)
@@ -360,7 +405,9 @@ def prepare_job_narration(folder, ctx, force=False):
     if not force and audio_path.is_file() and metadata_path.is_file():
         try:
             old = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if old.get("script_sha256") == script_hash and old.get("voice") == settings["voice"]:
+            minimum_seconds = min(20.0, float(ctx.get("stickman_duration") or ctx.get("duration_seconds") or 60))
+            if (old.get("script_sha256") == script_hash and old.get("voice") == settings["voice"]
+                    and _wav_info(audio_path)[0] >= minimum_seconds):
                 _stage_for_stickman(folder)
                 (folder / "narration_blocker.md").unlink(missing_ok=True)
                 info = {"ready": True, **old, "reused": True}
@@ -377,10 +424,24 @@ def prepare_job_narration(folder, ctx, force=False):
         info = {"ready": False, "note": note, "voice": settings["voice"]}
         _update_mission_files(folder, info)
         return info
+    minimum_seconds = min(20.0, float(ctx.get("stickman_duration") or ctx.get("duration_seconds") or 60))
+    measured_seconds = float(result.get("duration_seconds") or _wav_info(audio_path)[0])
+    if measured_seconds < minimum_seconds:
+        audio_path.unlink(missing_ok=True)
+        note = (
+            f"Audio Piper trop court : {measured_seconds:.1f} secondes, "
+            f"minimum {minimum_seconds:.0f} secondes pour l'aperçu. "
+            "Corrige la narration avant de démarrer Stickman."
+        )
+        (folder / "narration_blocker.md").write_text(note + "\n", encoding="utf-8")
+        info = {"ready": False, "note": note, "voice": settings["voice"]}
+        _update_mission_files(folder, info)
+        return info
     metadata = {**result, "voice": settings["voice"], "voice_license": VOICE_LICENSE,
                 "dataset_license": DATASET_LICENSE, "model_repository_license": MODEL_REPOSITORY_LICENSE,
                 "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
                 "script_sha256": script_hash, "script_characters": len(narration),
+                "narration_source": narration_source,
                 "target_duration_seconds": int(ctx.get("stickman_duration", 60) or 60),
                 "language": language,
                 "created_at": time.time(), "offline": True}
