@@ -117,6 +117,102 @@ def list_jobs(limit=100):
     return [dict(row) for row in rows]
 
 
+
+ARTIFACT_EXTENSIONS = {
+    ".json", ".md", ".txt", ".svg", ".mp4", ".mov", ".mkv", ".webm",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".csv",
+    ".srt", ".vtt", ".mp3", ".wav", ".m4a", ".aac", ".docx",
+    ".epub", ".xlsx", ".tsv", ".log", ".pptx"
+}
+
+ARTIFACT_KIND_BY_SUFFIX = {
+    ".mp4": "video", ".mov": "video", ".mkv": "video", ".webm": "video",
+    ".png": "image", ".jpg": "image", ".jpeg": "image", ".webp": "image",
+    ".gif": "image", ".svg": "image",
+    ".md": "document", ".txt": "document", ".pdf": "document",
+    ".docx": "document", ".epub": "document", ".srt": "document",
+    ".vtt": "document", ".pptx": "document",
+    ".json": "data", ".csv": "data", ".xlsx": "data", ".tsv": "data",
+    ".mp3": "audio", ".wav": "audio", ".m4a": "audio", ".aac": "audio",
+    ".log": "other"
+}
+
+
+def list_library(query="", workflow="", kind="", status=""):
+    """Return every mission and its generated artifacts for the central library."""
+    needle = str(query or "").strip().casefold()
+    workflow_filter = str(workflow or "").strip().casefold()
+    kind_filter = str(kind or "").strip().casefold()
+    status_filter = str(status or "").strip().casefold()
+    items = []
+
+    for job in list_jobs(1000):
+        if workflow_filter and workflow_filter != "all" and job["workflow"].casefold() != workflow_filter:
+            continue
+        if status_filter and status_filter != "all" and job["status"].casefold() != status_filter:
+            continue
+
+        folder = (ROOT / "outputs" / job["id"]).resolve()
+        output_root = (ROOT / "outputs").resolve()
+        files = []
+        if folder.parent == output_root and folder.is_dir():
+            for path in sorted(folder.iterdir(), key=lambda item: item.name.casefold()):
+                if not path.is_file() or path.name.startswith("."):
+                    continue
+                resolved = path.resolve()
+                if resolved.parent != folder:
+                    continue
+                suffix = path.suffix.casefold()
+                if suffix not in ARTIFACT_EXTENSIONS:
+                    continue
+                try:
+                    stat = resolved.stat()
+                except OSError:
+                    continue
+                files.append({
+                    "name": path.name,
+                    "size": stat.st_size,
+                    "extension": suffix,
+                    "kind": ARTIFACT_KIND_BY_SUFFIX.get(suffix, "other")
+                })
+
+        job_text = " ".join((job["id"], job["workflow"], job["brief"])).casefold()
+        job_matches_query = not needle or needle in job_text
+        if needle and not job_matches_query:
+            files = [item for item in files if needle in item["name"].casefold()]
+            if not files:
+                continue
+
+        if kind_filter and kind_filter != "all":
+            files = [item for item in files if item["kind"] == kind_filter]
+            if not files:
+                continue
+
+        items.append({
+            "id": job["id"],
+            "workflow": job["workflow"],
+            "workflow_label": LABELS.get(job["workflow"], job["workflow"].upper()),
+            "brief": job["brief"],
+            "status": job["status"],
+            "created": job["created"],
+            "updated": job["updated"],
+            "error": job.get("error"),
+            "files": files
+        })
+
+    file_count = sum(len(item["files"]) for item in items)
+    total_bytes = sum(file["size"] for item in items for file in item["files"])
+    return {
+        "jobs": items,
+        "stats": {
+            "jobs": len(items),
+            "files": file_count,
+            "bytes": total_bytes,
+            "active": sum(item["status"] in ("queued", "running") for item in items),
+            "ready": sum(item["status"] == "awaiting_approval" for item in items)
+        }
+    }
+
 def job_detail(job_id):
     job = get_job(job_id)
     if not job:
