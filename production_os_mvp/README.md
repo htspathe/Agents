@@ -62,7 +62,11 @@ Le panneau **Moteurs IA** du dashboard permet de choisir :
 - l'activation du basculement automatique ;
 - le modèle Ollama déjà téléchargé.
 
-Ordre initial : **Codex → Antigravity/Gemini → Ollama**. Le worker Stickman utilise le même ordre. En cas de quota épuisé, limitation de débit, erreur d'authentification ou indisponibilité réseau reconnue, il tente le moteur suivant. Il ne bascule pas automatiquement sur une erreur de production ordinaire, afin d'éviter de répéter une tâche qui a échoué pour une autre raison. Le moteur de secours inspecte les fichiers et journaux existants avant de continuer ; les sessions ne sont pas transférables entre fournisseurs, mais les livrables et checkpoints restent dans le dossier de mission.
+Ordre initial : **Codex → Antigravity/Gemini → Ollama**. Le worker Stickman utilise le même ordre. **Seuil par défaut : 5 % de quota restant**, ajustable entre 1 et 50 % dans le dashboard. Quand le quota du moteur actif est mesurable et atteint ce seuil, Production OS **ne lance pas la prochaine étape** sur ce moteur et passe au suivant. Il conserve les fichiers et checkpoints de la mission et laisse les validations humaines en place. Il ne stoppe pas brutalement une vidéo en cours de rendu, car une interruption pourrait corrompre les fichiers. Le nouveau moteur vérifie les ressources existantes avant de continuer.
+
+Cette règle ne s'applique qu'aux **pourcentages de quotas réels**, jamais au pourcentage de fenêtre de contexte du modèle. Codex est interrogé via la méthode officielle `account/rateLimits/read` de `codex app-server` et le quota retenu est le minimum des fenêtres actives connues. Pour Antigravity, le tableau lit une capture locale et **récente (moins de 5 minutes)** de son `statusLine` officiel. Si ces données manquent, sont périmées ou si l'authentification empêche l'accès, l'interface indique **Quota inconnu** : aucune estimation n'est inventée, et le basculement sur erreur fournisseur reste actif.
+
+En cas de quota épuisé, limitation de débit, erreur d'authentification ou indisponibilité réseau reconnue, le worker tente aussi le moteur suivant. Il ne bascule pas automatiquement sur une erreur de production ordinaire. Les sessions internes ne sont pas transférables d'un fournisseur à l'autre, mais les fichiers restent dans le dossier de mission. Si aucun moteur suivant n'est utilisable, la mission est bloquée sans consommer volontairement les 5 % réservés. Ollama étant local, il n'a pas de quota cloud en pourcentage.
 
 ### Installer et connecter les moteurs
 
@@ -84,6 +88,17 @@ Ordre initial : **Codex → Antigravity/Gemini → Ollama**. Le worker Stickman 
   agy -p "Réponds exactement READY" --output-format json --print-timeout 60s --mode=plan --sandbox
   ```
 - Antigravity utilise les quotas de ton compte Google. Si le mode Gemini API par clé est configuré, il peut être facturable : l'option **Autoriser Gemini API via clé** reste désactivée par défaut dans Production OS. Ne l'active que si tu acceptes ces coûts.
+
+**Capture de quota Antigravity (configuration locale facultative mais nécessaire pour la bascule à 5 % sur Gemini)**
+
+Dans `production_os_mvp`, exécute une fois :
+
+```powershell
+py -3 setup_quota_statusline.py
+agy
+```
+
+Le script fait une sauvegarde de `~/.gemini/antigravity-cli/settings.json` puis configure une ligne de statut qui copie uniquement les fractions de quota et l'identifiant du modèle dans `.antigravity_quota_status.json` (fichier ignoré par Git). Il ne copie pas tes identifiants, courriels ou discussions. Si un autre `statusLine` est déjà personnalisé, le script **refuse de le remplacer**. Tu peux alors intégrer la capture dans ton script existant. La commande `/usage` d'Antigravity affiche également les quotas, mais ouvre une interface interactive plutôt qu'un flux JSON exploitable directement. La capture doit être actualisée par Antigravity pour que le seuil de 5 % soit utilisé ; une capture périmée est marquée comme inconnue.
 
 **Ollama local**
 - Installe Ollama, lance le service, puis télécharge un modèle adapté à ton PC :
