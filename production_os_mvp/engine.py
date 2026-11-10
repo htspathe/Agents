@@ -358,7 +358,7 @@ def job_detail(job_id):
     job["revision_of"] = input_data.get("revision_of") or None
     job["correction_request"] = input_data.get("correction_request") or None
     job["start_agent"] = input_data.get("start_agent", "orchestrator")
-    folder = ROOT / "outputs" / job_id
+    folder = (ROOT / "outputs" / job_id).resolve()
     job["files"] = [
         {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
         for p in sorted(folder.rglob("*"), key=lambda item: item.relative_to(folder).as_posix().casefold())
