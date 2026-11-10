@@ -95,6 +95,13 @@ class ProductionTests(unittest.TestCase):
         data = json.loads((folder / "kdp_metadata_draft.json").read_text())
         self.assertEqual(data["amazon_submission"], "NOT_READY")
 
+    def test_piper_rejects_voice_without_verified_attribution(self):
+        with self.assertRaises(ValueError):
+            piper_tts.save_settings({
+                "enabled": True, "voice": "en_US-lessac-medium",
+                "python_path": "", "voice_dir": "", "sentence_silence": 0.18
+            })
+
     def test_piper_extracts_spoken_voiceover_section(self):
         source = (
             "# Script\n\n## Accroche\nUne question.\n\n"
