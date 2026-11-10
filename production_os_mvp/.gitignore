@@ -11,3 +11,6 @@ inbox/*
 tools/stickman-video-director/
 .agents/skills/directing-stickman-videos/
 .claude/skills/directing-stickman-videos/
+
+# Per-machine multi-engine routing preferences (no API keys)
+.production_os_engines.json
