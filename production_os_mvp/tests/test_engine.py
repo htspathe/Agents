@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app
 import engine
 import agents
+import stickman_bridge
 
 
 class ProductionTests(unittest.TestCase):
@@ -64,7 +65,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_youtube_storyboard(self):
         task = self.launch("youtube", "Comprendre le DCF")
-        self.assertEqual(task["status"], "awaiting_approval")
+        self.assertEqual(task["status"], "awaiting_external")
         folder = engine.ROOT / "outputs" / task["id"]
         data = json.loads((folder / "storyboard.json").read_text())
         self.assertFalse(data["requires_original_footage"])
@@ -106,6 +107,9 @@ class ProductionTests(unittest.TestCase):
         nested = engine.ROOT / "outputs" / task["id"] / "stickman_project" / "output"
         nested.mkdir(parents=True)
         (nested / "approved-scene.png").write_bytes(b"scene-reference")
+        (nested / "preview.mp4").write_bytes(b"first-preview")
+        preview = stickman_bridge.mark_preview_ready(task["id"], "stickman_project/output/preview.mp4")
+        self.assertEqual(preview["status"], "awaiting_preview_approval")
         decision = engine.decide_job(
             task["id"], "request_changes",
             "Renforcer l'accroche et vérifier l'exemple financier.",
@@ -122,10 +126,23 @@ class ProductionTests(unittest.TestCase):
 
         engine.run_job(revision_id)
         revision = engine.job_detail(revision_id)
-        self.assertEqual(revision["status"], "awaiting_approval")
+        self.assertEqual(revision["status"], "awaiting_external")
         self.assertTrue(any(item["name"] == "stickman_request.md" for item in revision["files"]))
 
-        approved = engine.decide_job(revision_id, "approve", "Aperçu accepté")
+        revision_output = engine.ROOT / "outputs" / revision_id / "stickman_project" / "output"
+        revision_output.mkdir(parents=True, exist_ok=True)
+        (revision_output / "preview.mp4").write_bytes(b"revised-preview")
+        stickman_bridge.mark_preview_ready(revision_id, "stickman_project/output/preview.mp4")
+        preview_approved = engine.decide_job(revision_id, "approve_preview", "Aperçu corrigé accepté")
+        self.assertEqual(preview_approved["status"], "render_authorized")
+
+        (revision_output / "final.mp4").write_bytes(b"final-render")
+        (revision_output / "captions.srt").write_text("1\\n00:00:00,000 --> 00:00:01,000\\nTexte validé\\n", encoding="utf-8")
+        final_ready = stickman_bridge.mark_final_ready(
+            revision_id, "stickman_project/output/final.mp4", "stickman_project/output/captions.srt"
+        )
+        self.assertEqual(final_ready["status"], "awaiting_approval")
+        approved = engine.decide_job(revision_id, "approve", "Rendu final accepté")
         self.assertEqual(approved["status"], "approved")
         self.assertEqual(engine.get_job(revision_id)["status"], "approved")
         self.assertFalse(json.loads((engine.ROOT / "outputs" / revision_id / "publishing_manifest.json").read_text())["auto_publish"])
