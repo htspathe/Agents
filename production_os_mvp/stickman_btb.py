@@ -169,13 +169,19 @@ def render(ctx: dict, folder: Path) -> str:
     if explicitly_provided:
         script = str(ctx["narration"]).strip()
     else:
-        prompt = (
-            ("Write only an original English narration of 65 to 95 words " if language == "en"
-             else "Rédige uniquement un script de narration original en français de 65 à 95 mots ")
-            "pour une vidéo courte du média Brain to Billions. Pas de titres Markdown, de balises "
-            "ni de chiffres, sources ou citations inventés. Présente les risques et nuances "
-            f"du sujet suivant : {idea}"
-        )
+        if language == "en":
+            prompt = (
+                "Write only an original English narration of 65 to 95 words for a Brain to Billions video. "
+                "No headings, Markdown, invented figures, invented citations or guarantees of profit. "
+                "Explain the risks and nuances. Topic: " + idea
+            )
+        else:
+            prompt = (
+                "Rédige uniquement un script de narration original en français de 65 à 95 mots "
+                "pour une vidéo courte du média Brain to Billions. Pas de titres Markdown, de balises "
+                "ni de chiffres, sources ou citations inventés. Présente les risques et nuances "
+                f"du sujet suivant : {idea}"
+            )
         script = llm(prompt, fallback, ctx).strip()
     if len(script) < 45:
         raise ValueError("Script trop court pour produire une vidéo intelligible.")
