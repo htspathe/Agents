@@ -15,6 +15,7 @@ from pathlib import Path
 import agents
 import engine
 import engine_manager
+import quota_monitor
 
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 SESSION_RE = re.compile(r"^[0-9a-f-]{30,40}$")
@@ -477,6 +478,30 @@ def run_worker(job_id: str, phase: str) -> int:
                     _write_state(folder, current)
                     continue
 
+                if settings.get("auto_fallback", True):
+                    low_quota, quota_info = quota_monitor.quota_exhausted_soon(
+                        provider,
+                        settings.get("switch_at_remaining_percent", 5),
+                    )
+                    current["last_quota_check"] = quota_info
+                    if low_quota:
+                        remaining = quota_info["remaining_percent"]
+                        threshold = settings.get("switch_at_remaining_percent", 5)
+                        reason = f"Quota {provider}: {remaining} % restant (seuil {threshold} %)."
+                        fallback_history.append({
+                            "provider": provider, "state": "low_quota",
+                            "reason": reason, "remaining_percent": remaining,
+                        })
+                        fallback_from = provider
+                        current.update({
+                            "provider": provider,
+                            "fallback_history": fallback_history,
+                            "message": reason + " Bascule au moteur de secours.",
+                        })
+                        _write_state(folder, current)
+                        engine.add_event(job_id, "stickman_worker", "quota_switch", reason)
+                        continue
+
                 ran_provider = True
                 session_id = provider_sessions.get(provider)
                 try:
@@ -596,7 +621,16 @@ def run_worker(job_id: str, phase: str) -> int:
             if switched_phase:
                 continue
             if not ran_provider:
-                message = "Aucun moteur de la chaîne n'est prêt. Vérifie les installations et les modèles locaux."
+                low_quota_seen = any(
+                    item.get("state") == "low_quota" for item in fallback_history
+                    if isinstance(item, dict)
+                )
+                message = (
+                    "Tous les moteurs disponibles sont au seuil de quota ou indisponibles. "
+                    "La mission reste en attente sans consommer le quota réservé."
+                    if low_quota_seen
+                    else "Aucun moteur de la chaîne n'est prêt. Vérifie les installations et les modèles locaux."
+                )
                 current.update({"state": "blocked", "message": message, "fallback_history": fallback_history})
                 _write_state(folder, current)
                 engine.add_event(job_id, "stickman_worker", "blocked", message)
