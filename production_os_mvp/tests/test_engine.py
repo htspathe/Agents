@@ -138,11 +138,32 @@ class ProductionTests(unittest.TestCase):
              mock.patch.object(piper_tts, "get_status", return_value={
                  "ready": False, "note": "Piper absent"
              }):
-            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60})
+            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60, "brief": "Expliquer l’inflation du train de vie"})
         self.assertFalse(result["ready"])
         self.assertTrue((folder / "narration.md").is_file())
         self.assertTrue((folder / "narration_blocker.md").is_file())
         self.assertFalse((folder / "narration.wav").exists())
+
+    def test_piper_repairs_generic_voiceover_for_lifestyle_inflation(self):
+        source = (
+            "## Voix off (brouillon)\nAujourd'hui, nous allons comprendre : "
+            "MISSION TEST — BRAIN TO BILLIONS.\n"
+        )
+        spoken, provenance, error = piper_tts._narration_source(
+            source, {"brief": "Pourquoi l'inflation du train de vie absorbe les augmentations ?"}
+        )
+        self.assertIsNone(error)
+        self.assertEqual(provenance, "curated_brain_to_billions_pilot")
+        self.assertIn("dépense", spoken)
+        self.assertNotIn("MISSION TEST", spoken)
+        self.assertGreater(len(spoken.split()), 105)
+
+    def test_piper_rejects_unrelated_generic_voiceover(self):
+        source = "## Voix off\nAujourd'hui, nous allons comprendre : MISSION TEST.\n"
+        spoken, provenance, error = piper_tts._narration_source(source, {"brief": "Les obligations d'État"})
+        self.assertEqual(spoken, "")
+        self.assertEqual(provenance, "blocked")
+        self.assertIn("générique", error)
 
     def test_piper_generates_and_stages_same_voice_wav(self):
         folder = Path(engine.ROOT) / "outputs" / "piper-ready"
@@ -166,13 +187,13 @@ class ProductionTests(unittest.TestCase):
                 audio.setnchannels(1)
                 audio.setsampwidth(2)
                 audio.setframerate(22050)
-                audio.writeframes(bytes(44100))
-            return {"file": "narration.wav", "duration_seconds": 1.0, "sample_rate": 22050,
+                audio.writeframes(bytes(22050 * 2 * 22))
+            return {"file": "narration.wav", "duration_seconds": 22.0, "sample_rate": 22050,
                     "size_bytes": output_path.stat().st_size, "voice": selected["voice"]}
         with mock.patch.object(piper_tts, "get_settings", return_value=settings), \
              mock.patch.object(piper_tts, "get_status", return_value=status), \
              mock.patch.object(piper_tts, "synthesize_to_wav", side_effect=fake_synthesis):
-            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60})
+            result = piper_tts.prepare_job_narration(folder, {"stickman_duration": 60, "brief": "Comprendre l’inflation du train de vie"})
         staged = project / "assets" / "audio" / "narration.wav"
         self.assertTrue(result["ready"])
         self.assertEqual(result["voice"], "fr_FR-siwis-medium")
