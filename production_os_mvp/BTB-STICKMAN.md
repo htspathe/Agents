@@ -1,76 +1,70 @@
-# Brain to Billions — Stickman local (MVP de raccordement)
+# Brain to Billions — voix officielle « Confident Male » (Qwen3-TTS)
 
-Cette intégration ajoute le workflow `brain_to_billions` au moteur **Agents/production_os_mvp**, sans changer le dépôt d'origine `kaomei/stickman-video-director`.
+**Sélection validée par le créateur.** L'identité vocale de toutes les vidéos Brain to Billions est **Confident Male — Sample 04** (Hangry Labs, référence synthétique Qwen3-TTS). Elle remplace la voix Windows SAPI Microsoft Paul dans le workflow `brain_to_billions`.
 
-## Périmètre réel
+## Ce qui est intégré au code
 
-- Entrée : idée (brief) et, de préférence, script de narration français déjà relu.
-- Si aucun script n'est fourni : Ollama local peut proposer un brouillon, sinon un **texte générique de démonstration** est produit. Ce brouillon n'est pas un reportage factuellement vérifié.
-- **Voice Lock Brain to Billions** : toutes les vidéos utilisent la voix SAPI exactement nommée dans `brain_to_billions_voice.json`, avec langue, débit et volume fixés. Aucune substitution silencieuse. La voix actuellement configurée, « Microsoft Paul » (fr-FR), est **provisoire** : elle avait été utilisée dans le premier MVP et nécessite encore ton approbation avant de devenir la signature définitive.
-- Le verrou refuse toute variable `STICKMAN_VOICE_WAV` qui permettrait d'injecter une autre voix. Une future TTS locale multilingue devra posséder un identifiant de voix propre, une référence d'échantillon approuvée et une vérification de cohérence. Le MVP actuel est français.
-- Réalisation : storyboard animé de type **B1 minimaliste**, moteur vidéo Stickman Autopilot, sous-titres temporisés et export H.264/AAC.
-- Exports de revue : `brain_to_billions_9x16.mp4`, `brain_to_billions_16x9.mp4`, WAV, narration TXT, SRT/VTT si fournis par le runtime, `stickman_report.json` et autres artefacts de mission.
-- **Aucun upload, aucune connexion et aucune publication YouTube.**
-- Les sous-titres sont placés par estimation proportionnelle ; ils doivent être contrôlés et recalés avant publication.
-- Le style premium noir/or, l'alignement Whisper, ComfyUI et les gabarits Remotion ne sont **pas encore raccordés**. B1 est le premier test technique ; il ne remplace pas l'identité visuelle officielle.
+- `brain_to_billions_voice.json` : configuration officielle, approuvée, versionnée.
+- `qwen_btb_voice.py` : charge cette configuration, télécharge **explicitement** la référence FLAC à l'installation, vérifie son SHA-256 et bloque toute substitution de locuteur.
+- `run_qwen_voice.py` : exécute Qwen3-TTS localement dans un environnement Python isolé.
+- `stickman_btb.py` : utilise cette voix sur les narrations, avant `validate` / `preview` Stickman ; exporte des MP4 de revue en 9:16 et 16:9.
+- Interface Production OS : choix **Français** ou **English** ; les deux langues utilisent **la même référence audio EN**. L'identité visée est cohérente, sans garantie d'une prononciation ou d'un timbre parfaitement identique dans les deux langues.
+- Le profil, son identifiant, sa langue et l'empreinte de la référence sont enregistrés dans `stickman_report.json`.
+- **Aucun appel à une API TTS payante, aucun upload YouTube.**
 
-## Prérequis sur la machine Windows
+La référence de démonstration « Confident Male » est **synthétique** et non exclusive : d'autres personnes peuvent réutiliser le même profil. Les sources et le texte de référence sont publiés par Hangry Labs :
+- [Écouter le Sample 04](https://hangry-labs.github.io/faster-qwen3-tts-studio/examples/)
+- [Manifest des références, empreintes et modèle](https://hangry-labs.github.io/faster-qwen3-tts-studio/examples/assets/manifest.json)
+- [Conditions d'utilisation des modèles](https://hangry-labs.github.io/faster-qwen3-tts-studio/docs/LICENSING.html)
 
-1. Python 3.11+ ; Node 20+ ; FFmpeg et FFprobe dans PATH.
-2. Skill Stickman installé, dépendances lancées avec `npm ci` dans `skills/directing-stickman-videos`.
-3. `node scripts/autopilot.mjs doctor` doit passer.
-4. La voix française Windows SAPI **Microsoft Paul**, nommée exactement ainsi, installée localement (ou sélectionner explicitement une autre voix dans le fichier de profil avant de lancer la mission). Ne jamais remplacer automatiquement la voix.
-5. Aucun accès payant et aucune clé API requis pour le MVP.
+## Prérequis (Windows)
 
-Le dossier du Skill est trouvé via `STICKMAN_SKILL_DIR`, puis `%USERPROFILE%\.codex\skills\directing-stickman-videos` ou les emplacements Production OS déjà documentés.
+1. Python **3.12 recommandé**, Node.js 20+, FFmpeg et FFprobe.
+2. Dépôt `kaomei/stickman-video-director` déjà installé, avec `npm ci` exécuté dans `skills/directing-stickman-videos` et un `doctor` valide.
+3. Espace disque pour les dépendances et les poids **Qwen/Qwen3-TTS-12Hz-1.7B-Base**, téléchargés lors du premier rendu. L'inférence est locale ensuite si les poids sont intégralement en cache.
+4. Puissance CPU/GPU et RAM/VRAM suffisantes **à vérifier sur la machine actuelle**. Un GPU NVIDIA compatible est préférable, mais le programme peut tenter un mode CPU beaucoup plus lent. Aucune bascule silencieuse vers une autre voix.
 
-### Démarrage
+Le dépôt GitHub contient **le connecteur, pas les poids du modèle ni l'audio de référence**. Un commit n'installe rien automatiquement sur le PC.
+
+### Installation du moteur vocal, une seule fois
+
+Ouvrir PowerShell dans le répertoire `production_os_mvp` de la branche d'intégration :
 
 ```powershell
-cd <chemin-du-repo-Agents>\production_os_mvp
+py -3.12 -m venv .venv-qwen
+.\.venv-qwen\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-qwen\Scripts\python.exe -m pip install "qwen-tts==0.1.1"
+py -3 qwen_btb_voice.py
+```
+
+La dernière commande télécharge uniquement la référence FLAC officielle dans `voice_assets/confident_male.flac` et refuse le fichier si son empreinte ne correspond pas au profil. Cette référence reste locale et n'est pas committée. Aucun modèle TTS n'est téléchargé par cette commande : il sera récupéré au **premier rendu vocal** via Hugging Face par `qwen-tts`.
+
+Si Python 3.12 n'est pas installé, installer une version prise en charge, puis recréer le venv ; ne pas mélanger la bibliothèque TTS avec les autres projets. Si les poids du modèle sont déjà téléchargés dans un dossier local, on pourra ajouter un chemin de modèle local sans changer de narrateur.
+
+### Lancement de Production OS
+
+```powershell
 $env:STICKMAN_SKILL_DIR = 'C:\Users\CHATA\Production-OS\Outils\Stickman-Video-Director\skills\directing-stickman-videos'
 $env:BTB_BOTH_FORMATS = '1'
 py -3 app.py
 ```
 
-Dans **Lancer une mission**, choisir **Brain to Billions · Vidéo Stickman**, renseigner le sujet, et coller de préférence un script français original de 8 à 59 secondes. Lancer puis ouvrir **Mes productions** pour récupérer les fichiers. Le moteur n'appelle pas `autopilot render` : il génère un **aperçu complet encodé** et exige une validation humaine avant une publication manuelle.
+Dans le tableau de bord, sélectionner **Brain to Billions · Vidéo Stickman**, choisir `Français` ou `English`, renseigner le sujet et idéalement un **script original relu**, puis lancer la mission. Après vérification, récupérer les MP4 dans **Mes productions**. La limite du pilote reste **8–59 secondes**. Le workflow utilisera automatiquement `.venv-qwen` pour la voix sans recourir à SAPI.
 
-### Verrouillage du narrateur
+Si un autre emplacement pour le venv est requis, définir `BTB_QWEN_PYTHON` vers le chemin **absolu de l'exécutable Python**. La variable `STICKMAN_VOICE_WAV` est refusée par Voice Lock.
 
-Le fichier `brain_to_billions_voice.json` est la seule source de vérité pour la voix de cette chaîne :
-
-```json
-{
-  "narrator_key": "brain-to-billions-main",
-  "provider": "windows_sapi",
-  "voice_name": "Microsoft Paul",
-  "language": "fr-FR",
-  "speech_rate": 0,
-  "volume": 100,
-  "approval_status": "provisional"
-}
-```
-
-Cette configuration correspond **uniquement à la voix temporaire déjà utilisée dans le MVP**, et non à une sélection définitive du créateur. Après écoute d'un échantillon et validation, conserver le même nom, langue, débit et fournisseur pour tous les épisodes, puis modifier `approval_status` en `approved`. Le pipeline enregistre l'identifiant et l'empreinte du profil dans `stickman_report.json`.
-
-**Si la voix fixe manque : la génération échoue explicitement.** Elle ne choisit plus la première voix disponible sur l'ordinateur. `STICKMAN_VOICE_WAV` est volontairement bloqué tant qu'un système d'import avec preuve d'identité vocale n'est pas implémenté.
-
-Pour les productions futures en anglais avec **exactement la même identité vocale**, un modèle TTS multilingue utilisant une voix approuvée sera nécessaire. La voix SAPI française ne suffit pas à garantir le même timbre en anglais.
-
-### Tests hors rendu
+### Vérifications
 
 ```powershell
 py -3 -m unittest discover -s tests -v
 ```
 
-Ce test ne constitue pas une validation du rendu sur la machine. Effectuer un test de mission réel, vérifier le rapport `stickman_report.json`, lire les fichiers audio/MP4 et contrôler la longueur et l'alignement des sous-titres. Le fichier final ne doit pas être considéré comme prêt à la publication tant que les contrôles éditoriaux et les droits ne sont pas validés.
+Lancer ensuite une **mission réelle sur la machine** : aucune vérification dans GitHub ne prouve que les poids Qwen sont installés, que l'inférence tient en mémoire, ou que le moteur Stickman réalise les plans. Écouter les deux langues et vérifier la durée, les MP4, la synchronisation des sous-titres et la cohérence vocale. Les sous-titres restent **approximativement temporisés** et nécessitent un contrôle.
 
-## Suite prévue
+## Limites restantes
 
-1. Bibliothèque de personnages Brain to Billions avec design récurrent.
-2. Détection/alignement de paroles par Whisper local et découpage par sens.
-3. Génération d'illustrations ComfyUI si modèle d'image compatible présent.
-4. Templates Remotion pour titres, courbes, flux financiers et transitions.
-5. Contrôle visuel automatisé + correction d'une scène isolée, sans régénérer le film entier.
-
-Les services externes restent optionnels, sans dépense implicite. La publication YouTube demeure entièrement manuelle.
+- Le style graphique B1 du MVP n'est pas encore la direction premium noir/or Brain to Billions.
+- ComfyUI, Remotion, Whisper et la correction ciblée des scènes ne sont pas encore raccordés.
+- La recherche dans Production OS est locale et ne garantit pas la vérification externe des faits financiers.
+- Les modèles Qwen sont sous Apache-2.0 ; la galerie et les fichiers audio ont leur propre provenance. Vérifier les droits applicables aux médias et au contenu avant monétisation.
+- **YouTube : publication toujours manuelle, aucune connexion de compte.**
