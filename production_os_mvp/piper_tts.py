@@ -291,7 +291,13 @@ def prepare_job_narration(folder, ctx, force=False):
                 return {"ready": True, **old, "reused": True}
         except (OSError, ValueError, TypeError):
             pass
-    result = synthesize_to_wav(narration, audio_path, settings)
+    try:
+        result = synthesize_to_wav(narration, audio_path, settings)
+    except PiperError as exc:
+        audio_path.unlink(missing_ok=True)
+        note = f"La synthèse Piper a échoué : {exc}"
+        (folder / "narration_blocker.md").write_text(note + "\\n", encoding="utf-8")
+        return {"ready": False, "note": note, "voice": settings["voice"]}
     metadata = {**result, "voice": settings["voice"], "voice_license": VOICE_LICENSE,
                 "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
                 "script_sha256": script_hash, "script_characters": len(narration),
