@@ -125,6 +125,13 @@ def run_job(job_id: str) -> None:
     ctx["notes"] = []
     folder = ROOT / "outputs" / job_id
     folder.mkdir(exist_ok=True)
+    if ctx.get("correction_request"):
+        (folder / "correction_request.md").write_text(
+            "Agent cible : " + str(ctx.get("start_agent", "orchestrator")) + "\n\n" +
+            str(ctx["correction_request"]) + "\n",
+            encoding="utf-8"
+        )
+        ctx["notes"].append("Consignes de correction transmises à l'agent cible.")
     set_status(job_id, "running")
     add_event(job_id, "orchestrator", "running", "Workflow démarré")
     try:
@@ -269,6 +276,8 @@ def decide_job(job_id, action, note="", target_agent="orchestrator"):
         raise ValueError("Mission introuvable")
     if job["status"] not in {"awaiting_approval", "changes_requested"}:
         raise ValueError("Cette mission n'est pas dans un état permettant une décision")
+    if job["status"] == "changes_requested" and action != "request_changes":
+        raise ValueError("Cette mission a déjà été renvoyée en correction ; elle ne peut plus être approuvée ou rejetée")
     target_agent = safe_text(target_agent, 40) or "orchestrator"
     if action == "request_changes" and target_agent != "orchestrator" and target_agent not in WORKFLOW_STEPS[job["workflow"]]:
         raise ValueError("L'agent choisi ne participe pas à ce workflow")
@@ -277,6 +286,8 @@ def decide_job(job_id, action, note="", target_agent="orchestrator"):
         current = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not current or current["status"] not in {"awaiting_approval", "changes_requested"}:
             raise ValueError("Le statut de la mission a changé ; actualise la page")
+        if current["status"] == "changes_requested" and action != "request_changes":
+            raise ValueError("Cette mission est déjà en correction et ne peut plus être approuvée ou rejetée")
         db.execute("UPDATE jobs SET status=?,updated=?,error=NULL WHERE id=?", (status, now(), job_id))
         db.execute("INSERT INTO decisions(job_id,action,note,target_agent,created) VALUES(?,?,?,?,?)",
                    (job_id, action, note, target_agent, now()))
