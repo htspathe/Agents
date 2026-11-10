@@ -420,6 +420,26 @@ class ProductionTests(unittest.TestCase):
         self.assertNotIn("--skip-git-repo-check", args[:args.index("exec")])
         self.assertIn("--json", args)
 
+    def test_stickman_worker_imports_existing_preview_without_rerunning_sandboxed_agent(self):
+        task = self.launch("youtube", "Récupération aperçu après échec SQLite")
+        folder = Path(engine.ROOT) / "outputs" / task["id"]
+        output = folder / "stickman_project" / "output"
+        output.mkdir(parents=True, exist_ok=True)
+        preview = output / "preview.mp4"
+        preview.write_bytes(b"verified-preview")
+        self.assertEqual(engine.get_job(task["id"])["status"], "awaiting_external")
+
+        with mock.patch.object(piper_tts, "ensure_job_narration", return_value={"ready": True}), \
+             mock.patch.object(stickman_worker, "_run_provider") as run_provider:
+            result = stickman_worker.run_worker(task["id"], "start")
+
+        self.assertEqual(result, 0)
+        run_provider.assert_not_called()
+        self.assertEqual(engine.get_job(task["id"])["status"], "awaiting_preview_approval")
+        self.assertEqual(stickman_worker.get_status(task["id"])["state"], "waiting_preview_approval")
+        self.assertEqual((folder / "stickman_preview.mp4").read_bytes(), b"verified-preview")
+        self.assertTrue(stickman_worker.get_status(task["id"])["imported_by_worker"])
+
     def test_stickman_worker_falls_back_from_codex_quota_to_antigravity(self):
         task = self.launch("youtube", "Test bascule Codex vers Gemini")
         settings = {
