@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,21 @@ class ProductionTests(unittest.TestCase):
         job_id = engine.new_job({"workflow": workflow, "brief": brief, **kwargs})
         engine.run_job(job_id)
         return engine.job_detail(job_id)
+
+
+    def test_dashboard_javascript_syntax(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js non installé")
+        source = Path(__file__).resolve().parents[1] / "index.html"
+        html = source.read_text(encoding="utf-8")
+        scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
+        self.assertTrue(scripts, "Aucun script JavaScript trouvé dans le dashboard")
+        with tempfile.TemporaryDirectory(prefix="production-os-js-test-") as temp_dir:
+            script = Path(temp_dir) / "dashboard.js"
+            script.write_text("\n\n".join(scripts), encoding="utf-8")
+            result = subprocess.run([node, "--check", str(script)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_twelve_roles_registered(self):
         self.assertEqual(len(agents.AGENTS), 12)
