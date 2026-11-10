@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
+import engine_manager
 import stickman_worker
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
@@ -72,7 +73,9 @@ class Handler(BaseHTTPRequestHandler):
                                "agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
                                "workflows": LABELS, "ffmpeg_installed": shutil.which("ffmpeg") is not None,
                                "ollama_model": os.environ.get("OLLAMA_MODEL") or None,
-                               "stickman": stickman_status(), "codex": stickman_worker.codex_status()})
+                               "stickman": stickman_status(), "codex": stickman_worker.codex_status(),
+                               "engines": engine_manager.get_engine_status(),
+                               "engine_settings": engine_manager.get_settings()})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -165,6 +168,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/engines/settings":
+            if length > 8000:
+                return self.respond(413, {"error": "Configuration des moteurs trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                settings = engine_manager.save_settings(data)
+                self.respond(200, {
+                    "settings": settings,
+                    "engines": engine_manager.get_engine_status(refresh=True)
+                })
+            except (ValueError, TypeError) as exc:
+                self.respond(400, {"error": str(exc)[:250]})
+            return
         m = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/stickman/(start|resume)", path)
         if m:
             if length > 2000:
