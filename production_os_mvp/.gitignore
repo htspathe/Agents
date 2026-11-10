@@ -20,3 +20,8 @@ tools/stickman-video-director/
 
 # Local provider quota snapshot (never sync account telemetry)
 .antigravity_quota_status.json
+
+# Local Piper configuration, downloaded voice models and test audio
+.production_os_piper.json
+tools/piper/
+.production_os_runtime/
