@@ -40,9 +40,9 @@ Chaque **agent** est un rôle logique : une description, des responsabilités, u
 
 ### Cycle d'une mission
 
-`queued → running → awaiting_approval → approved | changes_requested | rejected` (ou `failed`). Une correction crée une mission de révision distincte, conserve les livrables précédents et reprend au rôle choisi.
+`queued → running → awaiting_external → awaiting_preview_approval → render_authorized → awaiting_approval → approved` pour YouTube/Stickman ; les autres workflows passent de `running` à `awaiting_approval`. Les deux branches peuvent aussi passer à `changes_requested` ou `rejected` ; les erreurs passent à `failed`. Le pont `stickman_bridge.py` synchronise le preview et le rendu final avec SQLite. Une correction crée une mission de révision distincte, conserve les livrables imbriqués et reprend au rôle choisi.
 
-`approved` signifie que le livrable est accepté par revue humaine, **pas qu'il est publié**. `changes_requested` empêche l'approbation de l'ancienne version. La nouvelle mission revient ensuite à `awaiting_approval`. Chaque décision (action, note, agent cible, date) est persistée dans SQLite et visible dans le journal. Aucun upload ou post externe n'est déclenché.
+`render_authorized` autorise uniquement le rendu complet après validation de l'aperçu. `approved` signifie que le rendu final est accepté par revue humaine, **pas qu'il est publié**. `changes_requested` empêche l'approbation de l'ancienne version. Chaque décision (action, note, agent cible, date) est persistée dans SQLite et visible dans le journal. Aucun upload ou post externe n'est déclenché.
 
 ## 2. Contrat de chaque agent
 
