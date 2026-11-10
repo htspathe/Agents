@@ -585,6 +585,29 @@ def run_worker(job_id: str, phase: str) -> int:
         engine.add_event(job_id, "stickman_worker", "running",
                          "Worker multi-moteur démarré depuis le dashboard.")
 
+        # Recovery path: if the previous agent already produced the media but
+        # its sandboxed bridge could not update SQLite, import it now without
+        # spending another model run or rendering the same preview again.
+        initial_job = engine.get_job(job_id)
+        initial_status = initial_job["status"] if initial_job else "missing"
+        recovered = _import_completed_output(job_id, phase, folder, initial_status)
+        if recovered:
+            waiting_state = "waiting_preview_approval" if phase == "start" else "waiting_final_review"
+            waiting_status = "awaiting_preview_approval" if phase == "start" else "awaiting_approval"
+            message = (
+                "Aperçu existant importé par le worker Production OS ; validation humaine requise."
+                if phase == "start"
+                else "Rendu final existant importé par le worker Production OS ; revue humaine requise."
+            )
+            current = _read_state(folder)
+            current.update({
+                "state": waiting_state, "phase": phase, "pid": os.getpid(),
+                "imported_by_worker": True, "import_result": recovered, "message": message
+            })
+            _write_state(folder, current)
+            engine.add_event(job_id, "stickman_worker", waiting_status, message)
+            return 0
+
         settings = engine_manager.get_settings()
         order = engine_manager.provider_order(settings)
         status = engine_manager.get_engine_status(refresh=True)
