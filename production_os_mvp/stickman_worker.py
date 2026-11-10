@@ -24,6 +24,10 @@ SUPPORTED_STYLES = {"B1", "B2", "B3", "B4"}
 LAUNCH_LOCK = threading.Lock()
 
 
+class QuotaThresholdReached(RuntimeError):
+    pass
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -256,6 +260,24 @@ def _parse_session_id(line: str) -> str | None:
     return value if SESSION_RE.fullmatch(value) else None
 
 
+def _stop_provider_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True, text=True, timeout=5, check=False
+            )
+        else:
+            process.terminate()
+    except (OSError, subprocess.SubprocessError):
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
 def _run_provider(
     provider: str,
     job_id: str,
@@ -285,6 +307,8 @@ def _run_provider(
 
     latest_session = session_id
     recent = []
+    monitor_stop = threading.Event()
+    quota_trigger: dict = {}
     with _log_path(folder).open("a", encoding="utf-8") as log:
         log.write(f"\n[{now()}] Démarrage {provider} ({phase}).\n")
         log.flush()
@@ -302,30 +326,70 @@ def _run_provider(
             "message": f"{provider} exécute Stickman en arrière-plan."
         })
         _write_state(folder, current)
-        if process.stdout is None:
-            raise RuntimeError("Flux de sortie du moteur indisponible")
-        if send_prompt:
-            if process.stdin is None:
-                raise RuntimeError("Flux d'entrée Codex indisponible")
-            process.stdin.write(prompt)
-            process.stdin.close()
-        for raw_line in process.stdout:
-            safe_line = _redact(raw_line)
-            log.write(safe_line)
-            log.flush()
-            recent.append(safe_line)
-            if len(recent) > 120:
-                recent.pop(0)
-            found = _parse_session_id(raw_line)
-            if found and found != latest_session:
-                latest_session = found
-                current = _read_state(folder)
-                current["session_id"] = latest_session
-                current.setdefault("provider_sessions", {})[provider] = latest_session
-                _write_state(folder, current)
-        code = process.wait()
+
+        def monitor_quota():
+            if provider not in {"codex", "antigravity"}:
+                return
+            settings = engine_manager.get_settings()
+            threshold = settings.get("switch_at_remaining_percent", 5)
+            interval = settings.get("quota_check_interval_seconds", 15)
+            while not monitor_stop.is_set():
+                quota = engine_manager.get_provider_quota(provider, refresh=(provider == "codex"))
+                if quota.get("remaining_percent") is not None:
+                    latest = _read_state(folder)
+                    latest["quota"] = quota
+                    _write_state(folder, latest)
+                    if engine_manager.quota_should_switch(quota, threshold):
+                        quota_trigger.update(quota)
+                        message = (
+                            f"{provider} : {quota['remaining_percent']:.1f}% de quota restant "
+                            f"(seuil {threshold}%). Arrêt de l'étape et bascule."
+                        )
+                        with _log_path(folder).open("a", encoding="utf-8") as quota_log:
+                            quota_log.write(f"\n[{now()}] {message}\n")
+                        _stop_provider_process(process)
+                        return
+                if monitor_stop.wait(interval):
+                    return
+
+        monitor_thread = threading.Thread(target=monitor_quota, daemon=True)
+        if provider in {"codex", "antigravity"}:
+            monitor_thread.start()
+        try:
+            if process.stdout is None:
+                raise RuntimeError("Flux de sortie du moteur indisponible")
+            if send_prompt:
+                if process.stdin is None:
+                    raise RuntimeError("Flux d'entrée Codex indisponible")
+                process.stdin.write(prompt)
+                process.stdin.close()
+            for raw_line in process.stdout:
+                safe_line = _redact(raw_line)
+                log.write(safe_line)
+                log.flush()
+                recent.append(safe_line)
+                if len(recent) > 120:
+                    recent.pop(0)
+                found = _parse_session_id(raw_line)
+                if found and found != latest_session:
+                    latest_session = found
+                    current = _read_state(folder)
+                    current["session_id"] = latest_session
+                    current.setdefault("provider_sessions", {})[provider] = latest_session
+                    _write_state(folder, current)
+            code = process.wait()
+        finally:
+            monitor_stop.set()
+            if monitor_thread.is_alive():
+                monitor_thread.join(timeout=2)
         log.write(f"\n[{now()}] {provider} terminé avec le code {code}.\n")
         log.flush()
+    if quota_trigger:
+        remaining = quota_trigger.get("remaining_percent")
+        threshold = engine_manager.get_settings().get("switch_at_remaining_percent", 5)
+        raise QuotaThresholdReached(
+            f"Quota threshold reached: {remaining:.1f}% remaining (switch threshold {threshold}%)."
+        )
     return code, latest_session, "".join(recent)[-7000:]
 
 
@@ -503,6 +567,29 @@ def run_worker(job_id: str, phase: str) -> int:
                         continue
 
                 ran_provider = True
+                threshold = settings.get("switch_at_remaining_percent", 5)
+                if provider == "codex":
+                    quota = engine_manager.get_provider_quota("codex", refresh=True)
+                    if engine_manager.quota_should_switch(quota, threshold):
+                        fallback_history.append({
+                            "provider": provider, "state": "quota_threshold",
+                            "reason": f"{quota['remaining_percent']:.1f}% restants (seuil {threshold}%)."
+                        })
+                        fallback_from = provider
+                        current.update({
+                            "state": "running", "provider": provider,
+                            "quota": quota, "fallback_history": fallback_history,
+                            "message": f"Quota Codex à {quota['remaining_percent']:.1f}%. Bascule préventive."
+                        })
+                        _write_state(folder, current)
+                        engine.add_event(job_id, "stickman_worker", "quota_threshold",
+                                         f"Codex à {quota['remaining_percent']:.1f}% de quota restant ; bascule avant épuisement.")
+                        continue
+                elif provider == "antigravity":
+                    hook = engine_manager.ensure_antigravity_quota_hook()
+                    engine_manager.clear_antigravity_quota()
+                    current["quota_monitor"] = hook
+                    _write_state(folder, current)
                 session_id = provider_sessions.get(provider)
                 try:
                     code, session_id, output_tail = _run_provider(
