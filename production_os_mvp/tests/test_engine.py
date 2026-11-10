@@ -139,7 +139,7 @@ class ProductionTests(unittest.TestCase):
                 audio.setnchannels(1)
                 audio.setsampwidth(2)
                 audio.setframerate(22050)
-                audio.writeframes(b"\\x00\\x00" * 22050)
+                audio.writeframes(bytes(44100))
             return {"file": "narration.wav", "duration_seconds": 1.0, "sample_rate": 22050,
                     "size_bytes": output_path.stat().st_size, "voice": selected["voice"]}
         with mock.patch.object(piper_tts, "get_settings", return_value=settings), \
