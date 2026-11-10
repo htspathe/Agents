@@ -284,7 +284,7 @@ def update_manifest(job_id, status, decision=None, extra=None):
             manifest["human_decision"] = decision
         if extra:
             manifest.update(extra)
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError, TypeError):
         # SQLite remains the source of truth if a generated manifest cannot be updated.
         return
