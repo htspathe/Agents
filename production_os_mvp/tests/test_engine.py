@@ -90,9 +90,22 @@ class ProductionTests(unittest.TestCase):
         searched = engine.list_library(query="Comprendre le DCF")
         self.assertIn(task["id"], {item["id"] for item in searched["jobs"]})
 
+    def test_library_indexes_nested_stickman_outputs(self):
+        task = self.launch("youtube", "Pourquoi les riches utilisent-ils la dette ?")
+        nested = engine.ROOT / "outputs" / task["id"] / "stickman_project" / "output"
+        nested.mkdir(parents=True)
+        (nested / "preview.mp4").write_bytes(b"fake-preview")
+        library = engine.list_library(workflow="youtube", kind="video")
+        entry = next(item for item in library["jobs"] if item["id"] == task["id"])
+        self.assertIn("stickman_project/output/preview.mp4", {item["name"] for item in entry["files"]})
+        detail = engine.job_detail(task["id"])
+        self.assertIn("stickman_project/output/preview.mp4", {item["name"] for item in detail["files"]})
 
     def test_human_approval_and_targeted_revision(self):
         task = self.launch("youtube", "Pourquoi les riches utilisent-ils la dette ?")
+        nested = engine.ROOT / "outputs" / task["id"] / "stickman_project" / "output"
+        nested.mkdir(parents=True)
+        (nested / "approved-scene.png").write_bytes(b"scene-reference")
         decision = engine.decide_job(
             task["id"], "request_changes",
             "Renforcer l'accroche et vérifier l'exemple financier.",
@@ -105,6 +118,7 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(revision_input["revision_of"], task["id"])
         self.assertEqual(revision_input["start_agent"], "video")
         self.assertIn("Renforcer l'accroche", revision_input["correction_request"])
+        self.assertTrue((engine.ROOT / "outputs" / revision_id / "stickman_project" / "output" / "approved-scene.png").is_file())
 
         engine.run_job(revision_id)
         revision = engine.job_detail(revision_id)
