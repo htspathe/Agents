@@ -103,6 +103,7 @@ def research(ctx, folder):
 
 def content(ctx, folder):
     brief, typ = ctx["brief"], ctx["workflow"]
+    correction = safe_text(ctx.get("correction_request"), 1000)
     fallback = {
         "clogz": f"# Plan de campagne CLOGZ\n\nProduit / intention : {brief}\n\n## Positionnement\nConfort quotidien, style urbain et preuve produit à documenter.\n\n## Angle 1\nMontrer la paire en situation réelle à Dakar.\n\n## Angle 2\nComparer les coloris et inviter à choisir sa pointure.\n\n## Storyboard publicitaire (15 s)\n0–3 s : gros plan de la paire ; 3–9 s : démonstration ; 9–12 s : prix à vérifier ; 12–15 s : appel à consulter clogz.sn.\n\n## Vérifications\nNe pas promettre livraison gratuite, stocks ou promotion sans confirmation Shopify.",
         "kdp": f"# Concept de livre\n\nIdée : {brief}\n\n## Public cible\nÀ préciser avec des recherches marché indépendantes.\n\n## Table des matières (proposition)\n1. Introduction\n2. Les principes fondamentaux\n3. Les méthodes essentielles\n4. Mise en pratique\n5. Exercices ou exemples\n6. Synthèse et ressources\n\n## Originalité\nAjouter des exemples vérifiés, une expertise éditoriale et une relecture humaine.\n\n**Ce fichier n'est pas un manuscrit complet.**",
@@ -111,6 +112,8 @@ def content(ctx, folder):
     prompt = (f"Tu es un agent de production éditoriale responsable. Rédige en français un document Markdown exploitable pour le projet {typ}. "
               "N'invente pas de prix, données ou sources. Ajoute une liste des points à valider. "
               f"Brief : {brief}. Sources internes : {ctx.get('sources', [])}.")
+    if correction:
+        prompt += f"\n\nConsignes de correction à appliquer : {correction}"
     draft = llm(prompt, fallback, ctx)
     return write_text(folder, "content.md", draft)
 
@@ -148,6 +151,40 @@ def creative(ctx, folder):
     return "visual.svg"
 
 
+
+def stickman_skill_dir() -> Path:
+    configured = os.environ.get("STICKMAN_SKILL_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (ROOT / "tools" / "stickman-video-director" / "skills" / "directing-stickman-videos").resolve()
+
+
+def stickman_status() -> dict:
+    skill = stickman_skill_dir()
+    node = shutil.which("node")
+    checks = {
+        "skill": (skill / "SKILL.md").is_file(),
+        "runtime": (skill / "scripts" / "autopilot.mjs").is_file(),
+        "node": bool(node),
+        "canvas": (skill / "node_modules" / "@napi-rs" / "canvas").exists(),
+        "sharp": (skill / "node_modules" / "sharp").exists(),
+        "ffmpeg": bool(shutil.which("ffmpeg")),
+        "ffprobe": bool(shutil.which("ffprobe")),
+        "fonts": all((skill / "assets" / "fonts" / name).is_file()
+                     for name in ("Caveat.ttf", "NotoSans.ttf"))
+    }
+    installed = checks["skill"] and checks["runtime"]
+    runtime_ready = installed and all(checks[key] for key in ("node", "canvas", "sharp", "ffmpeg", "ffprobe", "fonts"))
+    return {
+        "installed": installed,
+        "runtime_ready": runtime_ready,
+        "skill_dir": str(skill),
+        "node_path": node,
+        "checks": checks,
+        "provider_key_present": bool(os.environ.get("GEMINI_API_KEY")),
+        "provider_note": "La présence d'une clé ne confirme ni quota, ni facturation, ni accès au modèle."
+    }
+
 def ffmpeg_ready():
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
@@ -159,6 +196,142 @@ def probe(path: Path) -> dict:
 
 
 def video(ctx, folder):
+    if ctx["workflow"] == "youtube" and ctx.get("stickman_enabled", True):
+        mode = ctx.get("stickman_mode", "autopilot")
+        style = ctx.get("stickman_style", "B1")
+        ratio = ctx.get("aspect_ratio", "9:16")
+        duration = int(ctx.get("stickman_duration", 60))
+        language = ctx.get("language", "fr")
+        channel = ctx.get("channel", "Brain to Billions")
+        config = {
+            "mode": mode, "style": style, "aspect_ratio": ratio,
+            "duration_seconds": duration, "narration_language": language,
+            "channel": channel, "topic": ctx["brief"],
+            "revision_of": ctx.get("revision_of") or None,
+            "correction_request": ctx.get("correction_request") or None,
+            "publication": "DISABLED"
+        }
+        write_json(folder, "stickman_job.json", config)
+
+        content_file = folder / "content.md"
+        script = content_file.read_text(encoding="utf-8") if content_file.is_file() else ctx["brief"]
+        research_file = folder / "research.md"
+        research = research_file.read_text(encoding="utf-8") if research_file.is_file() else "Aucune recherche documentaire disponible."
+        signature = (
+            "Direction éditoriale Brain to Billions : créer une identité originale et récurrente, "
+            "un personnage stickman original, des scènes de finance compréhensibles, des graphiques lisibles, "
+            "des objets concrets (dette, actifs, intérêts, trésorerie, levier) et une palette d'accents ambrés. "
+            "Pour le premier pilote en B1, conserver la grammaire dessinée à la main B1 ; les références B5/A6 "
+            "servent uniquement d'inspiration de marque, sans fusionner leurs contrats techniques ou copier leurs personnages."
+        )
+        request = f"""# Production OS vers Stickman Video Director
+
+## Mission
+- Identifiant Production OS : {ctx.get("job_id", "voir le dossier parent")}
+- Chaîne : {channel}
+- Sujet : {ctx["brief"]}
+- Mode : {"B · Autopilot" if mode == "autopilot" else "A · Director"}
+- Style Stickman : {style}
+- Format : {ratio} natif
+- Durée cible : {duration} secondes
+- Langue de narration : {language}
+- Publication : interdite depuis cette mission
+
+## Consigne d'exécution
+Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ainsi que les références obligatoires du mode/style sélectionné. Travaille uniquement dans le dossier stickman_project/ de cette mission. Ne modifie jamais le Skill source ni ses exemples acceptés.
+
+1. Prends content.md comme brouillon éditorial et research.md comme contexte interne, pas comme preuve suffisante. Vérifie les faits, chiffres, exemples financiers et sources avant de les raconter ; n'invente aucune statistique.
+2. Direction de marque : {signature}
+3. Préserve le sens du sujet, la continuité du personnage, le rythme de narration, des sous-titres synchronisés et des effets sonores pertinents. Conçois le ratio demandé nativement, sans recadrer une vidéo paysage pour prétendre obtenir un vrai portrait.
+4. Pour Autopilot, vérifie d'abord la configuration locale, les fournisseurs disponibles et leurs coûts. N'effectue aucun appel payant, achat de crédits ou abonnement sans autorisation explicite. Si aucun fournisseur gratuit/local utilisable n'est configuré, arrête-toi et fournis la liste exacte des prérequis manquants.
+5. Prépare un aperçu d'environ 20 secondes avec son et sous-titres, puis arrête la production complète pour revue humaine. Après approbation explicite de cet aperçu, produis le film complet.
+6. Place le MP4 final, les sous-titres, le projet source, les références et les rapports QA dans stickman_project/output/ ou dans le dossier de mission. Ne publie rien sur YouTube.
+
+## Fichiers de départ
+- Script/contenu : content.md
+- Recherche et points à vérifier : research.md
+- Configuration machine lisible : stickman_job.json
+- Consignes complètes : stickman_request.md
+
+## Brief éditorial
+{script}
+
+## Contexte documentaire
+{research}
+
+## Corrections demandées
+{ctx.get("correction_request") or "Aucune correction spécifique."}
+
+## Critères d'acceptation
+- Voix et sous-titres réellement synchronisés.
+- Personnage et style cohérents sur toute la vidéo.
+- Visuels spécifiques à l'idée financière, pas une succession de pictogrammes génériques.
+- Chiffres, formules, exemples et affirmations vérifiés et sourcés.
+- Audio intelligible, musique/SFX sous la voix, aucun silence involontaire.
+- Aperçu lu et écouté avant rendu complet.
+- Aucun upload, publication ou dépense sans validation explicite.
+"""
+        write_text(folder, "stickman_request.md", request)
+
+        status = stickman_status()
+        project_dir = folder / "stickman_project"
+        initialized = False
+        doctor_result = None
+        if status["runtime_ready"] and mode == "autopilot":
+            skill = stickman_skill_dir()
+            node = status["node_path"]
+            try:
+                doctor = subprocess.run([node, str(skill / "scripts" / "autopilot.mjs"), "doctor"],
+                                        cwd=str(skill), capture_output=True, text=True, timeout=60)
+                if doctor.stdout.strip():
+                    doctor_result = json.loads(doctor.stdout)
+                if doctor.returncode == 0 and not project_dir.exists() and style in {"B1", "B2", "B3", "B4", "B5"}:
+                    subprocess.run([node, str(skill / "scripts" / "autopilot.mjs"), "init",
+                                    str(project_dir), "--style", style],
+                                   cwd=str(skill), capture_output=True, text=True, timeout=90, check=True)
+                    if style in {"B1", "B2", "B3", "B4"}:
+                        project_file = project_dir / "project.json"
+                        if project_file.is_file():
+                            project_data = json.loads(project_file.read_text(encoding="utf-8"))
+                            project_data["width"], project_data["height"] = (720, 1280) if ratio == "9:16" else (1280, 720)
+                            project_data["fps"] = 30
+                            project_file.write_text(json.dumps(project_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                    initialized = True
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                ctx["notes"].append(f"Stickman : initialisation du projet impossible ({type(exc).__name__}).")
+        elif not status["installed"]:
+            ctx["notes"].append("Stickman non installé localement : dossier de transfert et consignes créés, exécution non lancée.")
+        elif not status["runtime_ready"]:
+            ctx["notes"].append("Skill Stickman détecté mais runtime incomplet : vérifier Node 20+, npm ci, FFmpeg/FFprobe et polices.")
+        elif mode == "director":
+            ctx["notes"].append("Stickman Director : proposition et prompts à produire par l'agent IA ; aucun rendu vidéo lancé par Python.")
+        if initialized:
+            ctx["notes"].append("Stickman Autopilot : projet local initialisé ; script, médias, aperçu et rendu complet restent à produire par l'agent IA.")
+        if style == "B5" and ratio == "9:16":
+            ctx["notes"].append("B5 portrait : la documentation impose un contrôle de mise en page et une nouvelle validation ; la référence acceptée est actuellement paysage.")
+        if not status["provider_key_present"] and mode == "autopilot":
+            ctx["notes"].append("Aucune clé Gemini détectée dans l'environnement du serveur ; le fournisseur réel doit être configuré ou une alternative gratuite/local vérifiée.")
+        write_json(folder, "stickman_runtime_status.json", {
+            **status, "project_initialized": initialized, "doctor": doctor_result,
+            "full_video_generated": False, "publication": "DISABLED"
+        })
+        storyboard = {
+            "title": ctx["brief"], "type": "stickman_handoff",
+            "mode": mode, "style": style, "aspect_ratio": ratio,
+            "duration_seconds": duration, "requires_original_footage": False,
+            "project_initialized": initialized,
+            "scenes": [
+                {"seconds": "0-5", "visual": "Accroche visuelle et question financière"},
+                {"seconds": "5-20", "visual": "Explication illustrée, personnage récurrent et premier mécanisme"},
+                {"seconds": "20-45", "visual": "Exemple vérifié, graphique et conséquence"},
+                {"seconds": f"45-{duration}", "visual": "Conclusion, idée mémorable et CTA"}
+            ],
+            "notes": "Passerelle vers Stickman. Ce storyboard et le projet initialisé ne sont pas un MP4 final."
+        }
+        write_json(folder, "storyboard.json", storyboard)
+        ctx["notes"].append("Passerelle Stickman créée : revue humaine de l'aperçu requise avant le rendu complet.")
+        return "stickman_request.md"
+
     storyboard = {
         "title": ctx["brief"], "type": "title_preview_only", "requires_original_footage": True,
         "scenes": [
@@ -294,6 +467,10 @@ def quality(ctx, folder):
         issues.append("Manuscrit complet, droits et couverture imprimable non vérifiés")
     if ctx["workflow"] == "youtube":
         issues.append("Sources factuelles et métrages définitifs non vérifiés")
+        if "stickman_request.md" in files:
+            issues.append("Passerelle Stickman préparée : aperçu audio/vidéo et rendu final encore à produire puis à faire approuver")
+        else:
+            issues.append("Passerelle Stickman absente")
     if ctx["workflow"] == "clogz":
         issues.append("Prix, stocks et conditions commerciales réelles non vérifiés")
     report = {"passed_technical_checks": not any("absent" in x or "absente" in x for x in issues),
