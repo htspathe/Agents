@@ -16,12 +16,20 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import smart_router
+
 ROOT = Path(__file__).resolve().parent
 SETTINGS_FILE = ".production_os_engines.json"
-PROVIDERS = ("codex", "antigravity", "ollama")
+PROVIDERS = ("codex", "antigravity", "opencode", "ollama")
 DEFAULT_SETTINGS = {
     "primary": "codex",
-    "fallbacks": ["antigravity", "ollama"],
+    "fallbacks": ["antigravity", "opencode", "ollama"],
+    "selection_mode": "auto",
+    "performance_learning": True,
+    "zone_priorities": {},
+    "task_priorities": {},
+    "allow_paid_calls": False,
+    "opencode_model": "",
     "auto_fallback": True,
     "ollama_model": "qwen2.5:3b",
     "allow_gemini_api_key": False,
@@ -47,6 +55,8 @@ def settings_path() -> Path:
 def get_settings() -> dict:
     result = dict(DEFAULT_SETTINGS)
     result["fallbacks"] = list(DEFAULT_SETTINGS["fallbacks"])
+    result["zone_priorities"] = {}
+    result["task_priorities"] = {}
     result["ollama_model"] = (
         os.environ.get("OLLAMA_MODEL", "").strip()
         or os.environ.get("STICKMAN_CODEX_MODEL", "").strip()
@@ -68,6 +78,21 @@ def get_settings() -> dict:
                 result["ollama_model"] = stored["ollama_model"].strip()[:120]
             if isinstance(stored.get("allow_gemini_api_key"), bool):
                 result["allow_gemini_api_key"] = stored["allow_gemini_api_key"]
+            if stored.get("selection_mode") in {"auto", "manual"}:
+                result["selection_mode"] = stored["selection_mode"]
+            if type(stored.get("performance_learning")) is bool:
+                result["performance_learning"] = stored["performance_learning"]
+            if type(stored.get("allow_paid_calls")) is bool:
+                result["allow_paid_calls"] = stored["allow_paid_calls"]
+            if isinstance(stored.get("opencode_model"), str):
+                result["opencode_model"] = stored["opencode_model"].strip()[:160]
+            try:
+                zones, tasks = smart_router.validate_priorities(
+                    stored.get("zone_priorities", {}), stored.get("task_priorities", {})
+                )
+                result["zone_priorities"], result["task_priorities"] = zones, tasks
+            except ValueError:
+                pass
             threshold = stored.get("switch_at_remaining_percent")
             if type(threshold) is int and 1 <= threshold <= 50:
                 result["switch_at_remaining_percent"] = threshold
@@ -105,8 +130,27 @@ def save_settings(data: dict) -> dict:
     threshold = data.get("switch_at_remaining_percent", 5)
     if type(threshold) is not int or not 1 <= threshold <= 50:
         raise ValueError("Le seuil de quota doit être un entier entre 1 et 50 %")
+    selection_mode = data.get("selection_mode", "auto")
+    if selection_mode not in {"auto", "manual"}:
+        raise ValueError("Mode de sélection inconnu")
+    learning = data.get("performance_learning", True)
+    allow_paid = data.get("allow_paid_calls", False)
+    if type(learning) is not bool or type(allow_paid) is not bool:
+        raise ValueError("Options de routage invalides")
+    opencode_model = data.get("opencode_model", "")
+    if not isinstance(opencode_model, str) or len(opencode_model.strip()) > 160:
+        raise ValueError("Modèle OpenCode invalide")
+    zones, tasks = smart_router.validate_priorities(
+        data.get("zone_priorities", {}), data.get("task_priorities", {})
+    )
     settings = {
         "primary": primary,
+        "selection_mode": selection_mode,
+        "performance_learning": learning,
+        "allow_paid_calls": allow_paid,
+        "opencode_model": opencode_model.strip(),
+        "zone_priorities": zones,
+        "task_priorities": tasks,
         "fallbacks": fallbacks,
         "auto_fallback": auto_fallback,
         "ollama_model": model.strip(),
@@ -171,6 +215,38 @@ def find_antigravity() -> str | None:
         extra.append(str(Path(local) / "agy" / "bin" / "agy.exe"))
     extra.append(str(Path.home() / ".local" / "bin" / "agy"))
     return _find_binary("ANTIGRAVITY_CLI_BIN", ["agy", "agy.exe"], extra)
+
+
+def find_opencode() -> str | None:
+    appdata = os.environ.get("APPDATA", "").strip()
+    local = os.environ.get("LOCALAPPDATA", "").strip()
+    extra = []
+    if appdata:
+        extra.append(str(Path(appdata) / "npm" / "opencode.cmd"))
+    if local:
+        extra.extend([
+            str(Path(local) / "Programs" / "opencode" / "opencode.exe"),
+            str(Path(local) / "Microsoft" / "WinGet" / "Links" / "opencode.exe"),
+        ])
+    extra.append(str(Path.home() / ".opencode" / "bin" / "opencode.exe"))
+    extra.append(str(Path.home() / ".opencode" / "bin" / "opencode"))
+    return _find_binary("PRODUCTION_OPENCODE_BIN", ["opencode", "opencode.exe", "opencode.cmd"], extra)
+
+
+def _opencode_model(settings: dict) -> str:
+    return (settings.get("opencode_model") or ("ollama/" + settings.get("ollama_model", "qwen2.5:3b"))).strip()
+
+
+def _model_allowed(model: str, settings: dict) -> bool:
+    if settings.get("allow_paid_calls", False):
+        return True
+    if model.startswith(("ollama/", "lmstudio/", "vllm/")):
+        return True
+    free_models = {
+        name.strip() for name in os.environ.get("PRODUCTION_OPENCODE_FREE_MODELS", "").split(",")
+        if name.strip()
+    }
+    return model in free_models
 
 
 def find_ollama() -> str | None:
@@ -284,9 +360,13 @@ def get_engine_status(refresh: bool = False) -> dict:
             return json.loads(json.dumps(_STATUS_CACHE))
     codex = find_codex()
     agy = find_antigravity()
+    oc = find_opencode()
     settings = get_settings()
     codex_version = _version(codex)
     agy_version = _version(agy)
+    oc_version = _version(oc)
+    oc_model = _opencode_model(settings)
+    oc_allowed = _model_allowed(oc_model, settings)
     gemini_api_key_mode = _antigravity_api_key_mode()
     allow_gemini_api_key = settings.get("allow_gemini_api_key", False)
     antigravity_ready = bool(agy and agy_version and (not gemini_api_key_mode or allow_gemini_api_key))
@@ -316,6 +396,22 @@ def get_engine_status(refresh: bool = False) -> dict:
             "installed": bool(agy), "ready": False, "version": agy_version,
             "authentication": "not_checked", "note": "Antigravity CLI introuvable ou non exécutable.",
         },
+        "opencode": {
+            "installed": bool(oc and oc_version),
+            "ready": bool(oc and oc_version and oc_allowed and (
+                not oc_model.startswith("ollama/") or _ollama_info(oc_model.split("/", 1)[1]).get("ready")
+            )),
+            "version": oc_version,
+            "model": oc_model,
+            "authentication": "not_checked",
+            "note": (
+                "OpenCode introuvable : installe le CLI puis sélectionne un modèle."
+                if not oc or not oc_version else
+                "Modèle potentiellement facturable bloqué par la politique budget zéro."
+                if not oc_allowed else
+                "OpenCode détecté. Authentification validée seulement à la première mission."
+            ),
+        },
         "ollama": _ollama_info(settings.get("ollama_model", "")),
     }
     with _STATUS_LOCK:
@@ -324,21 +420,20 @@ def get_engine_status(refresh: bool = False) -> dict:
     return json.loads(json.dumps(result))
 
 
-def provider_order(settings: dict | None = None) -> list[str]:
+def provider_order(settings: dict | None = None, ctx: dict | None = None) -> list[str]:
     settings = settings or get_settings()
-    primary = settings.get("primary", "codex")
-    if primary not in PROVIDERS:
-        primary = "codex"
-    order = [primary]
-    if settings.get("auto_fallback", True):
-        order.extend(_clean_fallbacks(settings.get("fallbacks", []), primary))
-    return order
+    ctx = ctx or {}
+    return smart_router.provider_order(
+        settings,
+        str(ctx.get("workflow") or ""),
+        str(ctx.get("active_agent") or "content"),
+    )
 
 
-def available_providers(settings: dict | None = None, status: dict | None = None, agentic: bool = False) -> list[str]:
+def available_providers(settings: dict | None = None, status: dict | None = None, agentic: bool = False, ctx: dict | None = None) -> list[str]:
     status = status or get_engine_status()
     field = "agent_ready" if agentic else "ready"
-    return [provider for provider in provider_order(settings) if status.get(provider, {}).get(field, status.get(provider, {}).get("ready"))]
+    return [provider for provider in provider_order(settings, ctx) if status.get(provider, {}).get(field, status.get(provider, {}).get("ready"))]
 
 
 def should_fallback(error_text: str) -> bool:
@@ -420,6 +515,52 @@ def _generate_antigravity(prompt: str, timeout: int = 150) -> str:
     return answer
 
 
+def _generate_opencode(prompt: str, timeout: int = 150) -> str:
+    """Read-only OpenCode agent with explicit model and no permission to mutate files."""
+    executable = find_opencode()
+    if not executable:
+        raise ProviderError("opencode", "OpenCode CLI introuvable", True)
+    settings = get_settings()
+    model = _opencode_model(settings)
+    if not _model_allowed(model, settings):
+        raise ProviderError("opencode", "Modèle OpenCode non autorisé par le budget zéro", False)
+    perms = {"edit": "deny", "bash": "deny", "webfetch": "deny",
+             "websearch": "deny", "external_directory": "deny"}
+    env = dict(os.environ)
+    env["OPENCODE_PERMISSION"] = json.dumps(perms)
+    env["OPENCODE_CONFIG_CONTENT"] = json.dumps({"permission": perms})
+    env["OPENCODE_DISABLE_AUTOUPDATE"] = "true"
+    args = ["run", "--agent", "plan", "--model", model, "--format", "json", prompt[:9000]]
+    command, shell = _command(executable, args)
+    try:
+        result = subprocess.run(
+            command, cwd=str(ROOT), env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
+            check=False, shell=shell
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ProviderError("opencode", "OpenCode : délai dépassé", True) from exc
+    except OSError as exc:
+        raise ProviderError("opencode", "OpenCode : lancement impossible", True) from exc
+    if result.returncode:
+        raise ProviderError("opencode", (result.stderr or result.stdout)[-2000:], True)
+    parts = []
+    for line in result.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        part = event.get("part") or {}
+        if event.get("type") == "text" and isinstance(part, dict) and isinstance(part.get("text"), str):
+            parts.append(part["text"])
+        elif event.get("type") == "text" and isinstance(event.get("text"), str):
+            parts.append(event["text"])
+    answer = "\n".join(parts).strip()
+    if not answer:
+        raise ProviderError("opencode", "OpenCode : aucune réponse textuelle exploitable", True)
+    return answer
+
+
 def _generate_ollama(prompt: str, timeout: int = 180) -> str:
     settings = get_settings()
     model = settings.get("ollama_model") or os.environ.get("OLLAMA_MODEL", "").strip()
@@ -451,11 +592,12 @@ def generate_text(prompt: str, fallback: str, ctx: dict) -> str:
     generators = {
         "codex": _generate_codex,
         "antigravity": _generate_antigravity,
+        "opencode": _generate_opencode,
         "ollama": _generate_ollama,
     }
     # Late import avoids a cycle: quota_monitor uses engine_manager's binary discovery.
     import quota_monitor
-    for provider in provider_order(settings):
+    for provider in provider_order(settings, ctx):
         if not status.get(provider, {}).get("ready"):
             attempted.append(f"{provider}: non disponible")
             continue
@@ -469,15 +611,19 @@ def generate_text(prompt: str, fallback: str, ctx: dict) -> str:
                     f"seuil {settings.get('switch_at_remaining_percent', 5)} %"
                 )
                 continue
+        started = time.monotonic()
         try:
             answer = generators[provider](prompt[:9000])
+            smart_router.record_attempt(str(ctx.get("workflow", "")), str(ctx.get("active_agent", "content")), provider, True, time.monotonic() - started)
             ctx.setdefault("notes", []).append(f"Génération de texte via {provider}.")
             if attempted:
                 ctx["notes"].append("Moteurs indisponibles ou en échec avant succès : " + "; ".join(attempted))
             return answer[:18000]
         except ProviderError as exc:
+            smart_router.record_attempt(str(ctx.get("workflow", "")), str(ctx.get("active_agent", "content")), provider, False, time.monotonic() - started)
             attempted.append(f"{provider}: {str(exc)[:240]}")
         except Exception as exc:
+            smart_router.record_attempt(str(ctx.get("workflow", "")), str(ctx.get("active_agent", "content")), provider, False, time.monotonic() - started)
             attempted.append(f"{provider}: {type(exc).__name__}")
     if attempted:
         ctx.setdefault("notes", []).append("Aucun moteur IA utilisable ; gabarit déterministe conservé. " + "; ".join(attempted))
