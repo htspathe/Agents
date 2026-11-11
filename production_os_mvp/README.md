@@ -7,7 +7,7 @@
 - Si NVENC échoue ou si la VRAM dépasse les seuils de sécurité, le rendu bascule une seule fois vers libx264.
 - Réglages par défaut adaptés à une RTX 3050 Laptop 4 Go : GPU activé, seuil VRAM à 70 %, réserve libre de 768 Mo, 6 threads CPU pour le secours et une seule tâche d'encodage GPU à la fois.
 - Les préférences sont stockées localement dans .production_os_resources.json et exclues de Git.
-- Le worker Stickman reçoit la politique d'encodage détectée. Le décodage CUDA, les filtres CUDA, ComfyUI et l'inférence Ollama ne sont pas déclarés accélérés tant que leurs tests spécifiques n'ont pas été exécutés.
+- Le worker Stickman reçoit la politique d'encodage et passe ses exports MP4 par le wrapper FFmpeg partagé, qui verrouille l'accès GPU et applique le repli CPU. Le décodage CUDA, les filtres CUDA, ComfyUI et l'inférence Ollama ne sont pas déclarés accélérés tant que leurs tests spécifiques n'ont pas été exécutés.
 - Le tableau de bord affiche les mesures matérielles et permet de modifier ces seuils dans « Matériel & accélération ».
 
 ## V0.5 — Routage IA par zone et tâche
