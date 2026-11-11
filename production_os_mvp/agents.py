@@ -18,6 +18,7 @@ from pathlib import Path
 from functools import lru_cache
 
 import engine_manager
+import resource_manager
 import piper_tts
 import viral_storyboard
 import voice_studio
@@ -492,12 +493,16 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
     write_json(folder, "storyboard.json", storyboard)
     if ffmpeg_ready():
         try:
-            subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-                            "-i", "color=c=0x172535:s=540x960:r=24", "-t", "3", "-an", "-c:v", "libx264",
-                            "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p", str(folder / "video_preview.mp4")],
-                           capture_output=True, text=True, timeout=55, check=True)
-            ctx["notes"].append("Prévisualisation FFmpeg de 3 s créée (fond uni, aucun métrage final).")
-        except (OSError, subprocess.SubprocessError) as exc:
+            encoded = resource_manager.run_video_encode(
+                ["-f", "lavfi", "-i", "color=c=0x172535:s=540x960:r=24", "-t", "3", "-an"],
+                folder / "video_preview.mp4",
+                profile="preview",
+                timeout=55,
+            )
+            ctx["notes"].append(
+                f"Prévisualisation FFmpeg de 3 s créée avec {encoded['encoder']} (fond uni, aucun métrage final)."
+            )
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             ctx["notes"].append(f"Prévisualisation indisponible : {type(exc).__name__}")
     else:
         ctx["notes"].append("FFmpeg absent : storyboard créé sans rendu vidéo.")
@@ -527,13 +532,17 @@ def clipping(ctx, folder):
     if not (0 <= start < end <= duration + 0.02 and (end - start) <= 120):
         raise ValueError(f"Plage invalide : source de {duration:.2f} s, maximum 120 s par clip")
     output = folder / "short_vertical.mp4"
-    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-i", str(src),
-           "-t", f"{end-start:.3f}", "-vf", "scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(output)]
-    cp = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
-    if cp.returncode or not output.is_file():
-        raise RuntimeError("FFmpeg : " + (cp.stderr[-500:] or "échec d'export"))
+    encoded = resource_manager.run_video_encode(
+        [
+            "-ss", f"{start:.3f}", "-i", str(src),
+            "-t", f"{end-start:.3f}",
+            "-vf", "scale=540:960:force_original_aspect_ratio=increase,crop=540:960,setsar=1",
+        ],
+        output,
+        profile="clip",
+        audio_args=["-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"],
+        timeout=240,
+    )
     result = probe(output)
     vs = [s for s in result["streams"] if s.get("codec_type") == "video"]
     if not vs or int(vs[0].get("width", 0)) != 540 or int(vs[0].get("height", 0)) != 960:
@@ -541,8 +550,10 @@ def clipping(ctx, folder):
     write_json(folder, "clip_details.json", {"input": filename, "start": start, "end": end,
                                              "output": "short_vertical.mp4", "resolution": "540x960",
                                              "rights_confirmed_by_user": True,
+                                             "encoder": encoded["encoder"],
+                                             "encoder_fallback_used": encoded["fallback_used"],
                                              "publication": "MANUAL_APPROVAL_REQUIRED"})
-    ctx["notes"].append("Export vertical généré avec FFmpeg, diffusion non autorisée automatiquement.")
+    ctx["notes"].append(f"Export vertical généré avec {encoded['encoder']}, diffusion non autorisée automatiquement.")
     return "short_vertical.mp4"
 
 

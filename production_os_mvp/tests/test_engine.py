@@ -15,6 +15,7 @@ import agents
 import stickman_bridge
 import stickman_worker
 import engine_manager
+import resource_manager
 import quota_monitor
 import piper_tts
 import voice_studio
@@ -26,7 +27,7 @@ class ProductionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="production-os-test-")
-        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT)
+        cls.old = (engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT, resource_manager.ROOT)
         root = Path(cls.tmp.name)
         (root / "knowledge").mkdir()
         (root / "samples").mkdir()
@@ -36,17 +37,19 @@ class ProductionTests(unittest.TestCase):
         for file in (source / "knowledge").glob("*.md"):
             shutil.copy2(file, root / "knowledge" / file.name)
         shutil.copy2(source / "samples" / "clogz_catalog_demo.csv", root / "samples" / "clogz_catalog_demo.csv")
-        engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = root, root, root, root, root
+        engine.ROOT, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT, resource_manager.ROOT = root, root, root, root, root, root
         engine.DB = root / "test.sqlite3"
         engine_manager.invalidate_status_cache()
         piper_tts.invalidate_status_cache()
+        resource_manager.invalidate_status_cache()
         engine.init()
 
     @classmethod
     def tearDownClass(cls):
-        engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT = cls.old
+        engine.ROOT, engine.DB, agents.ROOT, app.ROOT, engine_manager.ROOT, piper_tts.ROOT, resource_manager.ROOT = cls.old
         engine_manager.invalidate_status_cache()
         piper_tts.invalidate_status_cache()
+        resource_manager.invalidate_status_cache()
         cls.tmp.cleanup()
 
     def launch(self, workflow, brief="Exemple de production contrôlée", **kwargs):

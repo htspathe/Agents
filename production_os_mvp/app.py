@@ -23,6 +23,7 @@ import engine_manager
 import comfyui_bridge
 import smart_router
 import quota_monitor
+import resource_manager
 import piper_tts
 import voice_studio
 import stickman_worker
@@ -35,7 +36,7 @@ ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ProductionOS/0.5"
+    server_version = "ProductionOS/0.6"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[HTTP] " + fmt % args + "\n")
@@ -100,6 +101,8 @@ class Handler(BaseHTTPRequestHandler):
                                    key: quota_monitor.get_quota(key)
                                    for key in engine_manager.PROVIDERS
                                },
+                               "resources": resource_manager.get_status(),
+                               "resource_settings": resource_manager.get_settings(),
                                "piper": piper_tts.get_status(),
                                "piper_settings": piper_tts.get_settings(),
                                "voice_studio": voice_studio.status(),
@@ -264,6 +267,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, {"result": result, "piper": piper_tts.get_status(refresh=True)})
             except (ValueError, TypeError, piper_tts.PiperError) as exc:
                 self.respond(400, {"error": str(exc)[:500]})
+            return
+        if path == "/api/resources/settings":
+            if length > 4000:
+                return self.respond(413, {"error": "Configuration matérielle trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                settings = resource_manager.save_settings(data)
+                self.respond(200, {
+                    "settings": settings,
+                    "resources": resource_manager.get_status(refresh=True),
+                })
+            except (ValueError, TypeError) as exc:
+                self.respond(400, {"error": str(exc)[:300]})
             return
         if path == "/api/engines/settings":
             if length > 8000:

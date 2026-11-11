@@ -15,6 +15,9 @@ tools/stickman-video-director/
 # Per-machine multi-engine routing preferences (no API keys)
 .production_os_engines.json
 
+# Per-machine CPU/GPU resource preferences
+.production_os_resources.json
+
 # Local quota telemetry written by provider status hooks
 .production_os_runtime/
 
