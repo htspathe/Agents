@@ -494,6 +494,12 @@ def start_worker(job_id: str, phase: str = "start") -> dict:
         engine.add_event(job_id, "stickman_worker", waiting_status, message)
         return {"id": job_id, "state": waiting_state, "recovered": True}
 
+    if config.get("viral_template"):
+        raise ValueError(
+            "Storyboard viral préparé, mais voix podcast ElevenLabs et timestamps mot à mot "
+            "non raccordés. Le rendu est bloqué pour éviter toute dépense ou substitution "
+            "automatique par la voix Piper. Consulte viral_timeline_report.json."
+        )
     try:
         narration = piper_tts.ensure_job_narration(folder, config, phase=phase)
     except piper_tts.PiperError as exc:
@@ -596,6 +602,11 @@ def run_worker(job_id: str, phase: str) -> int:
     try:
         engine.init()
         job, config, folder = _active_job(job_id)
+        if config.get("viral_template"):
+            raise ValueError(
+                "Le scénario viral exige une vraie voix podcast ElevenLabs et des timestamps "
+                "par mot avant le rendu ; aucun appel facturable n'est autorisé."
+            )
         narration = piper_tts.ensure_job_narration(folder, config, phase=phase)
         if phase == "start" and not narration.get("ready", True):
             raise piper_tts.PiperError(str(narration.get("note") or "Piper n'est pas prêt."))
