@@ -33,6 +33,11 @@ _STATUS_LOCK = threading.Lock()
 _STATUS_CACHE: dict | None = None
 _STATUS_CACHE_AT = 0.0
 _STATUS_TTL_SECONDS = 3.0
+_NVENC_PROBE_LOCK = threading.Lock()
+_NVENC_PROBE_CACHE_KEY: tuple | None = None
+_NVENC_PROBE_CACHE_RESULT: tuple[bool, str] | None = None
+_NVENC_PROBE_CACHE_AT = 0.0
+_NVENC_PROBE_TTL_SECONDS = 120.0
 _CPU_SAMPLE_LOCK = threading.Lock()
 _CPU_SAMPLE: tuple[int, int] | None = None
 
@@ -244,6 +249,36 @@ def _memory_info() -> dict:
     }
 
 
+def _cached_nvenc_probe(executable: str, gpu: dict) -> tuple[bool, str]:
+    global _NVENC_PROBE_CACHE_KEY, _NVENC_PROBE_CACHE_RESULT, _NVENC_PROBE_CACHE_AT
+    key = (executable, gpu.get("driver_version"), gpu.get("name"))
+    with _NVENC_PROBE_LOCK:
+        if (
+            _NVENC_PROBE_CACHE_KEY == key
+            and _NVENC_PROBE_CACHE_RESULT is not None
+            and time.monotonic() - _NVENC_PROBE_CACHE_AT < _NVENC_PROBE_TTL_SECONDS
+        ):
+            return _NVENC_PROBE_CACHE_RESULT
+        probe = subprocess.run(
+            [
+                executable, "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1",
+                "-frames:v", "1", "-an", "-c:v", "h264_nvenc",
+                "-preset", "p1", "-f", "null", "-",
+            ],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=15, check=False,
+        )
+        ok = probe.returncode == 0
+        note = "Test d'encodage H.264 NVENC réussi." if ok else (
+            "Test NVENC échoué : " + (probe.stderr or "erreur inconnue")[-260:]
+        )
+        _NVENC_PROBE_CACHE_KEY = key
+        _NVENC_PROBE_CACHE_RESULT = (ok, note)
+        _NVENC_PROBE_CACHE_AT = time.monotonic()
+        return _NVENC_PROBE_CACHE_RESULT
+
+
 def _ffmpeg_info(gpu: dict, settings: dict) -> dict:
     executable = shutil.which("ffmpeg")
     base = {
@@ -266,27 +301,16 @@ def _ffmpeg_info(gpu: dict, settings: dict) -> dict:
         compiled = encoders.returncode == 0 and "h264_nvenc" in encoder_text
         runtime_ok = False
         probe_note = "Encodeur NVENC absent de cette compilation FFmpeg."
-        if compiled and gpu.get("available"):
+        if compiled and gpu.get("available") and settings["gpu_enabled"]:
             free = gpu.get("memory_free_mb")
             if free is not None and free < settings["min_free_vram_mb"]:
                 probe_note = "Test NVENC différé : réserve VRAM libre insuffisante."
             else:
-                probe = subprocess.run(
-                    [
-                        executable, "-hide_banner", "-loglevel", "error",
-                        "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1",
-                        "-frames:v", "1", "-an", "-c:v", "h264_nvenc",
-                        "-preset", "p1", "-f", "null", "-",
-                    ],
-                    capture_output=True, text=True, encoding="utf-8",
-                    errors="replace", timeout=15, check=False,
-                )
-                runtime_ok = probe.returncode == 0
-                probe_note = "Test d'encodage H.264 NVENC réussi." if runtime_ok else (
-                    "Test NVENC échoué : " + (probe.stderr or "erreur inconnue")[-260:]
-                )
-        elif compiled:
+                runtime_ok, probe_note = _cached_nvenc_probe(executable, gpu)
+        elif compiled and not gpu.get("available"):
             probe_note = "NVENC compilé, mais aucune carte NVIDIA n'est détectée."
+        elif compiled and not settings["gpu_enabled"]:
+            probe_note = "GPU désactivé dans les paramètres."
         total = gpu.get("memory_total_mb")
         used = gpu.get("memory_used_mb")
         used_percent = (100 * used / total) if total and used is not None else None
