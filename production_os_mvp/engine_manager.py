@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -29,7 +30,7 @@ DEFAULT_SETTINGS = {
     "zone_priorities": {},
     "task_priorities": {},
     "allow_paid_calls": False,
-    "opencode_model": "",
+    "opencode_model": "opencode/mimo-v2.6-flash-free",
     "auto_fallback": True,
     "ollama_model": "qwen2.5:3b",
     "allow_gemini_api_key": False,
@@ -85,7 +86,9 @@ def get_settings() -> dict:
             if type(stored.get("allow_paid_calls")) is bool:
                 result["allow_paid_calls"] = stored["allow_paid_calls"]
             if isinstance(stored.get("opencode_model"), str):
-                result["opencode_model"] = stored["opencode_model"].strip()[:160]
+                saved_model = stored["opencode_model"].strip()[:160]
+                # Recover from the previous setup script that wrote an empty ollama/ reference.
+                result["opencode_model"] = DEFAULT_SETTINGS["opencode_model"] if saved_model == "ollama/" else (saved_model or DEFAULT_SETTINGS["opencode_model"])
             try:
                 zones, tasks = smart_router.validate_priorities(
                     stored.get("zone_priorities", {}), stored.get("task_priorities", {})
@@ -138,8 +141,8 @@ def save_settings(data: dict) -> dict:
     if type(learning) is not bool or type(allow_paid) is not bool:
         raise ValueError("Options de routage invalides")
     opencode_model = data.get("opencode_model", "")
-    if not isinstance(opencode_model, str) or len(opencode_model.strip()) > 160:
-        raise ValueError("Modèle OpenCode invalide")
+    if not isinstance(opencode_model, str) or len(opencode_model.strip()) > 160 or opencode_model.strip() in {"ollama/", "opencode/"}:
+        raise ValueError("Modèle OpenCode invalide (nom manquant)")
     zones, tasks = smart_router.validate_priorities(
         data.get("zone_priorities", {}), data.get("task_priorities", {})
     )
@@ -148,7 +151,7 @@ def save_settings(data: dict) -> dict:
         "selection_mode": selection_mode,
         "performance_learning": learning,
         "allow_paid_calls": allow_paid,
-        "opencode_model": opencode_model.strip(),
+        "opencode_model": opencode_model.strip() or DEFAULT_SETTINGS["opencode_model"],
         "zone_priorities": zones,
         "task_priorities": tasks,
         "fallbacks": fallbacks,
@@ -234,13 +237,18 @@ def find_opencode() -> str | None:
 
 
 def _opencode_model(settings: dict) -> str:
-    return (settings.get("opencode_model") or ("ollama/" + settings.get("ollama_model", "qwen2.5:3b"))).strip()
+    selected = str(settings.get("opencode_model") or "").strip()
+    return DEFAULT_SETTINGS["opencode_model"] if selected in {"", "ollama/", "opencode/"} else selected
 
 
 def _model_allowed(model: str, settings: dict) -> bool:
     if settings.get("allow_paid_calls", False):
         return True
-    if model.startswith("ollama/"):
+    if re.fullmatch(r"ollama/[^\s/]+", model):
+        return True
+    # Free cloud tiers still require network access and may require login,
+    # but never opt into an explicitly metered model.
+    if re.fullmatch(r"opencode/[a-zA-Z0-9._-]+-free", model):
         return True
     free_models = {
         name.strip() for name in os.environ.get("PRODUCTION_OPENCODE_FREE_MODELS", "").split(",")
@@ -411,6 +419,8 @@ def get_engine_status(refresh: bool = False) -> dict:
                 if not oc or not oc_version else
                 "Modèle potentiellement facturable bloqué par la politique budget zéro."
                 if not oc_allowed else
+                "OpenCode détecté, modèle gratuit sélectionné. Accès réseau/authentification vérifiés à la première mission."
+                if oc_model.startswith("opencode/") else
                 "OpenCode détecté. Authentification validée seulement à la première mission."
             ),
         },
