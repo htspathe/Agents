@@ -1,0 +1,620 @@
+{
+  "metadata": {
+    "topic": "L'inflation du train de vie : pourquoi gagner plus ne rend pas riche",
+    "series": "Brain to Billions",
+    "language": "fr",
+    "duration_seconds": 35,
+    "resolution": "1080x1920",
+    "fps": 30,
+    "visual_style": "minimalist_stickman",
+    "background": "beige_ochre_grid",
+    "palette": {
+      "background": "#E9DCC4",
+      "grid": "#C8B99B",
+      "primary": "#171717",
+      "accent": "#D4A359"
+    },
+    "bgm_mood": "minimal_piano_tension",
+    "bgm_volume_db": -22,
+    "voice_provider": "ElevenLabs",
+    "voice_style": "male_warm_confident_podcast",
+    "voice_speed": 1.08,
+    "safe_zone_subtitles_y": 1340,
+    "subtitle_highlight_color": "#D4A359",
+    "subtitle_highlight_scale": 1.15,
+    "visual_lead_in_ms": -100,
+    "loop_enabled": true,
+    "requires_word_timestamps": true
+  },
+  "scenes": [
+    {
+      "scene_id": 1,
+      "narrative_phase": "HOOK",
+      "start_time_s": 0,
+      "end_time_s": 1.5,
+      "header_title": "TU GAGNES PLUS",
+      "voiceover_text": "Tu gagnes plus.",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "fier",
+        "idle_animation": "bounce",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "box_label",
+          "content": "SALAIRE ↑",
+          "accent_color": "#D4A359",
+          "entry_animation": "pop_overshoot",
+          "trigger_word": "gagnes",
+          "lead_in_ms": -100,
+          "sfx_trigger": "cash_register",
+          "sfx_volume_db": -12
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Tu gagnes plus.",
+          "highlight_word": "gagnes"
+        }
+      ]
+    },
+    {
+      "scene_id": 2,
+      "narrative_phase": "HOOK",
+      "start_time_s": 1.5,
+      "end_time_s": 3,
+      "header_title": "MAIS TU T'APPAUVRIS",
+      "voiceover_text": "Mais tu t'appauvris.",
+      "camera_movement": "shake_light",
+      "character": {
+        "emotion": "surpris",
+        "idle_animation": "idle_breathe",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "counter",
+          "content": "ÉPARGNE : 0 €",
+          "accent_color": "#171717",
+          "entry_animation": "counter_drop",
+          "trigger_word": "t'appauvris",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -10
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Mais tu t'appauvris.",
+          "highlight_word": "t'appauvris"
+        }
+      ]
+    },
+    {
+      "scene_id": 3,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 3,
+      "end_time_s": 5.5,
+      "header_title": "L'AUGMENTATION",
+      "voiceover_text": "Ton salaire grimpe de vingt pour cent.",
+      "camera_movement": "pan_right",
+      "character": {
+        "emotion": "euphorique",
+        "idle_animation": "bounce",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "bar_chart",
+          "content": "SALAIRE",
+          "accent_color": "#D4A359",
+          "entry_animation": "grow_up",
+          "trigger_word": "grimpe",
+          "lead_in_ms": -100,
+          "sfx_trigger": "tick_up",
+          "sfx_volume_db": -13
+        },
+        {
+          "element_type": "box_label",
+          "content": "+20 %",
+          "accent_color": "#D4A359",
+          "entry_animation": "pop_overshoot",
+          "trigger_word": "vingt",
+          "lead_in_ms": -100,
+          "sfx_trigger": "cash_register",
+          "sfx_volume_db": -12
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Ton salaire grimpe",
+          "highlight_word": "grimpe"
+        },
+        {
+          "text": "de vingt pour cent.",
+          "highlight_word": "vingt"
+        }
+      ]
+    },
+    {
+      "scene_id": 4,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 5.5,
+      "end_time_s": 8,
+      "header_title": "LES PETITS PLAISIRS",
+      "voiceover_text": "Tu commandes plus souvent.",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "euphorique",
+        "idle_animation": "bounce",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "expense_box",
+          "content": "LIVRAISONS",
+          "accent_color": "#D4A359",
+          "entry_animation": "pop_overshoot",
+          "trigger_word": "commandes",
+          "lead_in_ms": -100,
+          "sfx_trigger": "pop_soft",
+          "sfx_volume_db": -15
+        },
+        {
+          "element_type": "frequency_arrow",
+          "content": "PLUS SOUVENT",
+          "accent_color": "#D4A359",
+          "entry_animation": "slide_right",
+          "trigger_word": "souvent",
+          "lead_in_ms": -100,
+          "sfx_trigger": "whoosh_fast",
+          "sfx_volume_db": -16
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Tu commandes plus souvent.",
+          "highlight_word": "commandes"
+        }
+      ]
+    },
+    {
+      "scene_id": 5,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 8,
+      "end_time_s": 10.5,
+      "header_title": "UN ABONNEMENT DE PLUS",
+      "voiceover_text": "Tu prends un abonnement supplémentaire.",
+      "camera_movement": "pan_right",
+      "character": {
+        "emotion": "fier",
+        "idle_animation": "idle_breathe",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "subscription_card",
+          "content": "ABONNEMENT +1",
+          "accent_color": "#D4A359",
+          "entry_animation": "pop_overshoot",
+          "trigger_word": "abonnement",
+          "lead_in_ms": -100,
+          "sfx_trigger": "pop_soft",
+          "sfx_volume_db": -14
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Tu prends un abonnement",
+          "highlight_word": "abonnement"
+        },
+        {
+          "text": "supplémentaire.",
+          "highlight_word": "supplémentaire"
+        }
+      ]
+    },
+    {
+      "scene_id": 6,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 10.5,
+      "end_time_s": 13,
+      "header_title": "LE NIVEAU DE VIE MONTE",
+      "voiceover_text": "Puis un appartement plus cher.",
+      "camera_movement": "slow_zoom_out",
+      "character": {
+        "emotion": "fier",
+        "idle_animation": "walk_cycle",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "house_outline",
+          "content": "APPARTEMENT",
+          "accent_color": "#171717",
+          "entry_animation": "draw_progressive",
+          "trigger_word": "appartement",
+          "lead_in_ms": -100,
+          "sfx_trigger": "pop_soft",
+          "sfx_volume_db": -14
+        },
+        {
+          "element_type": "price_arrow",
+          "content": "LOYER ↑",
+          "accent_color": "#D4A359",
+          "entry_animation": "grow_up",
+          "trigger_word": "cher",
+          "lead_in_ms": -100,
+          "sfx_trigger": "tick_up",
+          "sfx_volume_db": -13
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Puis un appartement plus cher.",
+          "highlight_word": "cher"
+        }
+      ]
+    },
+    {
+      "scene_id": 7,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 13,
+      "end_time_s": 15.5,
+      "header_title": "TOUT SEMBLE MÉRITÉ",
+      "voiceover_text": "Chaque plaisir paraît mérité.",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "euphorique",
+        "idle_animation": "bounce",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "expense_stack",
+          "content": "PLAISIRS",
+          "accent_color": "#D4A359",
+          "entry_animation": "progressive_build",
+          "trigger_word": "plaisir",
+          "lead_in_ms": -100,
+          "sfx_trigger": "pop_soft",
+          "sfx_volume_db": -14
+        },
+        {
+          "element_type": "approval_stamp",
+          "content": "JE LE MÉRITE",
+          "accent_color": "#D4A359",
+          "entry_animation": "stamp",
+          "trigger_word": "mérité",
+          "lead_in_ms": -100,
+          "sfx_trigger": "cash_register",
+          "sfx_volume_db": -12
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Chaque plaisir paraît mérité.",
+          "highlight_word": "mérité"
+        }
+      ]
+    },
+    {
+      "scene_id": 8,
+      "narrative_phase": "MECANISME",
+      "start_time_s": 15.5,
+      "end_time_s": 18,
+      "header_title": "LE PIÈGE S'INSTALLE",
+      "voiceover_text": "Mais tes charges montent aussi vite.",
+      "camera_movement": "pan_right",
+      "character": {
+        "emotion": "surpris",
+        "idle_animation": "idle_breathe",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "expense_stack",
+          "content": "CHARGES",
+          "accent_color": "#171717",
+          "entry_animation": "progressive_build",
+          "trigger_word": "charges",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -12
+        },
+        {
+          "element_type": "comparison_arrows",
+          "content": "REVENUS ↑  DÉPENSES ↑",
+          "accent_color": "#D4A359",
+          "entry_animation": "grow_up",
+          "trigger_word": "montent",
+          "lead_in_ms": -100,
+          "sfx_trigger": "tick_up",
+          "sfx_volume_db": -14
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Mais tes charges",
+          "highlight_word": "charges"
+        },
+        {
+          "text": "montent aussi vite.",
+          "highlight_word": "vite"
+        }
+      ]
+    },
+    {
+      "scene_id": 9,
+      "narrative_phase": "CHUTE",
+      "start_time_s": 18,
+      "end_time_s": 20.5,
+      "header_title": "LE CALCUL",
+      "voiceover_text": "Résultat : mille euros gagnés, et mille euros dépensés.",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "inquiet",
+        "idle_animation": "tremble",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "balance_scale",
+          "content": "+1 000 € / -1 000 €",
+          "accent_color": "#D4A359",
+          "entry_animation": "balance_tilt",
+          "trigger_word": "gagnés",
+          "lead_in_ms": -100,
+          "sfx_trigger": "cash_register",
+          "sfx_volume_db": -11
+        },
+        {
+          "element_type": "expense_total",
+          "content": "DÉPENSÉ : 1 000 €",
+          "accent_color": "#171717",
+          "entry_animation": "stamp",
+          "trigger_word": "dépensés",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -9
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Résultat : mille euros gagnés,",
+          "highlight_word": "gagnés"
+        },
+        {
+          "text": "et mille euros dépensés.",
+          "highlight_word": "dépensés"
+        }
+      ]
+    },
+    {
+      "scene_id": 10,
+      "narrative_phase": "CHUTE",
+      "start_time_s": 20.5,
+      "end_time_s": 23,
+      "header_title": "AUCUNE ÉPARGNE",
+      "voiceover_text": "Ton épargne ne bouge pas.",
+      "camera_movement": "slow_zoom_out",
+      "character": {
+        "emotion": "triste",
+        "idle_animation": "idle_breathe",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "savings_bar",
+          "content": "ÉPARGNE : 0 €",
+          "accent_color": "#171717",
+          "entry_animation": "empty_bar",
+          "trigger_word": "épargne",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -12
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Ton épargne ne bouge pas.",
+          "highlight_word": "épargne"
+        }
+      ]
+    },
+    {
+      "scene_id": 11,
+      "narrative_phase": "CHUTE",
+      "start_time_s": 23,
+      "end_time_s": 26,
+      "header_title": "LE MOINDRE IMPRÉVU",
+      "voiceover_text": "Au premier imprévu, tu retombes à zéro.",
+      "camera_movement": "shake_light",
+      "character": {
+        "emotion": "ecrase",
+        "idle_animation": "tremble",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "falling_expense_block",
+          "content": "IMPRÉVU",
+          "accent_color": "#171717",
+          "entry_animation": "drop_heavy",
+          "trigger_word": "imprévu",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -8
+        },
+        {
+          "element_type": "counter",
+          "content": "SOLDE : 0 €",
+          "accent_color": "#D4A359",
+          "entry_animation": "counter_drop",
+          "trigger_word": "zéro",
+          "lead_in_ms": -100,
+          "sfx_trigger": "thud_heavy",
+          "sfx_volume_db": -10
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Au premier imprévu,",
+          "highlight_word": "imprévu"
+        },
+        {
+          "text": "tu retombes à zéro.",
+          "highlight_word": "zéro"
+        }
+      ]
+    },
+    {
+      "scene_id": 12,
+      "narrative_phase": "ACTION_LOOP",
+      "start_time_s": 26,
+      "end_time_s": 28.5,
+      "header_title": "LA RÈGLE DES 20 %",
+      "voiceover_text": "À chaque augmentation, prélève d'abord vingt pour cent.",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "determine",
+        "idle_animation": "idle_breathe",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "money_split",
+          "content": "20 % → ÉPARGNE",
+          "accent_color": "#D4A359",
+          "entry_animation": "split_progressive",
+          "trigger_word": "prélève",
+          "lead_in_ms": -100,
+          "sfx_trigger": "ding_idea",
+          "sfx_volume_db": -12
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "À chaque augmentation,",
+          "highlight_word": "augmentation"
+        },
+        {
+          "text": "prélève d'abord vingt pour cent.",
+          "highlight_word": "vingt"
+        }
+      ]
+    },
+    {
+      "scene_id": 13,
+      "narrative_phase": "ACTION_LOOP",
+      "start_time_s": 28.5,
+      "end_time_s": 31,
+      "header_title": "AUTOMATISE",
+      "voiceover_text": "Automatise ce virement vers ton épargne.",
+      "camera_movement": "pan_right",
+      "character": {
+        "emotion": "determine",
+        "idle_animation": "walk_cycle",
+        "position": "center_left"
+      },
+      "visual_elements": [
+        {
+          "element_type": "transfer_arrow",
+          "content": "SALAIRE → ÉPARGNE",
+          "accent_color": "#D4A359",
+          "entry_animation": "slide_right",
+          "trigger_word": "virement",
+          "lead_in_ms": -100,
+          "sfx_trigger": "whoosh_fast",
+          "sfx_volume_db": -14
+        },
+        {
+          "element_type": "savings_bar",
+          "content": "ÉPARGNE ↑",
+          "accent_color": "#D4A359",
+          "entry_animation": "grow_up",
+          "trigger_word": "épargne",
+          "lead_in_ms": -100,
+          "sfx_trigger": "tick_up",
+          "sfx_volume_db": -13
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Automatise ce virement",
+          "highlight_word": "Automatise"
+        },
+        {
+          "text": "vers ton épargne.",
+          "highlight_word": "épargne"
+        }
+      ]
+    },
+    {
+      "scene_id": 14,
+      "narrative_phase": "ACTION_LOOP",
+      "start_time_s": 31,
+      "end_time_s": 33,
+      "header_title": "VIS AVEC LE RESTE",
+      "voiceover_text": "Vis ensuite avec le reste.",
+      "camera_movement": "slow_zoom_out",
+      "character": {
+        "emotion": "fier",
+        "idle_animation": "idle_breathe",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "budget_box",
+          "content": "BUDGET DISPONIBLE",
+          "accent_color": "#D4A359",
+          "entry_animation": "pop_overshoot",
+          "trigger_word": "reste",
+          "lead_in_ms": -100,
+          "sfx_trigger": "ding_idea",
+          "sfx_volume_db": -14
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Vis ensuite avec le reste.",
+          "highlight_word": "reste"
+        }
+      ]
+    },
+    {
+      "scene_id": 15,
+      "narrative_phase": "ACTION_LOOP",
+      "start_time_s": 33,
+      "end_time_s": 35,
+      "header_title": "ET LE CYCLE RECOMMENCE...",
+      "voiceover_text": "Sinon, le paradoxe recommence :",
+      "camera_movement": "slow_zoom_in",
+      "character": {
+        "emotion": "surpris",
+        "idle_animation": "idle_breathe",
+        "position": "center"
+      },
+      "visual_elements": [
+        {
+          "element_type": "loop_arrow",
+          "content": "RETOUR AU DÉBUT",
+          "accent_color": "#D4A359",
+          "entry_animation": "rotate_loop",
+          "trigger_word": "recommence",
+          "lead_in_ms": -100,
+          "sfx_trigger": "whoosh_fast",
+          "sfx_volume_db": -15
+        }
+      ],
+      "subtitles_chunks": [
+        {
+          "text": "Sinon, le paradoxe recommence :",
+          "highlight_word": "paradoxe"
+        }
+      ],
+      "seamless_loop_to_scene_id": 1
+    }
+  ]
+}
