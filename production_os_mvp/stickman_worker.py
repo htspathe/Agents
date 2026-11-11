@@ -214,12 +214,16 @@ def _prompt(
         "La narration n'a pas de timestamps mot à mot vérifiés."
     )
     video_policy = resource_manager.get_video_policy()
-    if video_policy["preferred_encoder"] == "h264_nvenc":
+    preferred_encoder = video_policy["preferred_encoder"]
+    min_free_vram_mb = video_policy["min_free_vram_mb"]
+    max_vram_percent = video_policy["max_vram_percent"]
+    cpu_threads = video_policy["cpu_threads"]
+    if preferred_encoder == "h264_nvenc":
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré vérifié : h264_nvenc (NVIDIA NVENC).
 - Pour les exports H.264, utilise -c:v h264_nvenc -preset p5 -b:v 6M -pix_fmt yuv420p.
-- Si NVENC échoue, si la VRAM libre passe sous {video_policy["min_free_vram_mb"]} Mo ou si l'utilisation dépasse {video_policy["max_vram_percent"]} %, bascule une seule fois vers -c:v libx264 -preset veryfast -crf 22 -threads {video_policy["cpu_threads"]}.
+- Si NVENC échoue, si la VRAM libre passe sous {min_free_vram_mb} Mo ou si l'utilisation dépasse {max_vram_percent} %, bascule une seule fois vers -c:v libx264 -preset veryfast -crf 22 -threads {cpu_threads}.
 - La limite Production OS est d'une tâche d'encodage GPU simultanée.
 - Seul l'encodage NVENC H.264 a été testé ; ne force pas -hwaccel cuda ni des filtres CUDA non vérifiés.
 """
@@ -227,7 +231,7 @@ ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré actuel : libx264 (CPU), car NVENC n'est pas disponible ou la VRAM est sous le seuil.
-- Utilise -c:v libx264 -preset veryfast -crf 22 -threads {video_policy["cpu_threads"]}.
+- Utilise -c:v libx264 -preset veryfast -crf 22 -threads {cpu_threads}.
 - Si NVENC redevient disponible, le diagnostic Production OS l'indiquera au prochain rafraîchissement.
 - Ne force pas -hwaccel cuda ni des filtres CUDA non vérifiés.
 """
