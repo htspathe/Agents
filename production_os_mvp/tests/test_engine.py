@@ -439,6 +439,11 @@ class ProductionTests(unittest.TestCase):
         self.assertFalse(meta["timing_review_required"])
         self.assertTrue((folder / "narration.wav").is_file())
         self.assertTrue((folder / "visual_trigger_timestamps.json").is_file())
+        self.assertTrue((folder / "viral_subtitles.srt").is_file())
+        subtitles = json.loads((folder / "dynamic_subtitle_timestamps.json").read_text(encoding="utf-8"))["cues"]
+        self.assertGreater(len(subtitles), 15)
+        self.assertTrue(all(cue["highlight_color"] == "#D4A359" for cue in subtitles))
+        self.assertEqual(subtitles[0]["text"], "Tu gagnes plus.")
         self.assertEqual(
             stickman_worker._ensure_narration(folder, {"voice_provider": "elevenlabs",
                                                        "viral_template": "brain_to_billions_lifestyle_inflation"},
