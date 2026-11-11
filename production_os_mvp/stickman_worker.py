@@ -17,6 +17,7 @@ import engine
 import engine_manager
 import quota_monitor
 import piper_tts
+import voice_studio
 import stickman_bridge
 
 JOB_ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -202,14 +203,23 @@ def _prompt(
     ffmpeg_exe = shutil.which("ffmpeg") or "NON DÉTECTÉ"
     ffprobe_exe = shutil.which("ffprobe") or "NON DÉTECTÉ"
     python_exe = str(Path(sys.executable).resolve())
+    provider = narration_metadata.get("provider") or "piper"
+    alignment_note = (
+        f"TIMESTAMPS RÉELS : {folder / 'word_timestamps.json'} et "
+        f"{folder / 'visual_trigger_timestamps.json'}. "
+        "Utilise les horodatages mesurés, aucun placement fictif."
+        if narration_metadata.get("has_real_word_timestamps") else
+        "La narration n'a pas de timestamps mot à mot vérifiés."
+    )
     narration_note = f"""
-NARRATION AUDIO IMPOSÉE — PIPER LOCAL
+NARRATION AUDIO IMPOSÉE — {provider.upper()}
 - WAV de référence : {narration_path.resolve()}
 - Voix : {narration_metadata.get('voice', 'fr_FR-siwis-medium')}
 - Utilise exactement ce WAV ; ne lance aucun autre moteur TTS et ne remplace pas la voix.
 - L'aperçu utilise les 20 premières secondes du WAV ; le rendu final utilise le fichier complet.
 - Les sous-titres doivent être alignés sur cet audio réel.
-- Attribution du modèle vocal : {narration_metadata.get('voice_attribution', '')}
+- Attribution de la voix si applicable : {narration_metadata.get('voice_attribution', '')}
+- {alignment_note}
 - Python de la mission : {python_exe} (ne pas invoquer py -3 ni WindowsApps).
 - FFmpeg : {ffmpeg_exe} ; FFprobe : {ffprobe_exe}. Ces chemins sont détectés par le worker local.
 - Si un shell agentique ne trouve pas FFmpeg dans son PATH, utilise le chemin absolu ci-dessus ou corrige le PATH de son processus ; vérifie ensuite les deux commandes, sans prétendre que le runtime est prêt par simple déclaration.
@@ -465,6 +475,39 @@ def _active_job(job_id: str):
     return job, config, folder
 
 
+def _ensure_narration(folder: Path, config: dict, phase: str) -> dict:
+    provider = str(config.get("voice_provider") or "piper")
+    if provider == "piper":
+        info = piper_tts.ensure_job_narration(folder, config, phase=phase)
+        if phase == "start" and not info.get("ready", True):
+            raise ValueError(str(info.get("note") or "Piper n'est pas prêt."))
+        return info
+    if provider not in voice_studio.PROVIDERS:
+        raise ValueError("Moteur de voix inconnu.")
+    wav, meta_file = folder / "narration.wav", folder / "narration_metadata.json"
+    if not wav.is_file() or not meta_file.is_file():
+        raise ValueError(
+            f"Voix {provider} non générée. Utilise « Générer la narration » dans la mission "
+            "avant de démarrer Stickman. Aucune voix de substitution ne sera créée."
+        )
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    if not meta.get("ready") or meta.get("provider") != provider:
+        raise ValueError("Les métadonnées de la narration ne correspondent pas au moteur demandé.")
+    if not (folder / "narration.md").is_file():
+        raise ValueError("Texte exact prononcé introuvable.")
+    text = (folder / "narration.md").read_text(encoding="utf-8").strip()
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != meta.get("script_sha256"):
+        raise ValueError("La narration a changé après génération audio. Recrée une mission pour modifier le script.")
+    piper_tts._wav_info(wav)
+    if config.get("viral_template"):
+        if not meta.get("has_real_word_timestamps") or meta.get("timing_review_required"):
+            raise ValueError("Le storyboard viral requiert des timestamps réels et une durée audio compatible avec 35 s.")
+        for name in ("word_timestamps.json", "visual_trigger_timestamps.json"):
+            if not (folder / name).is_file():
+                raise ValueError(f"Horodatage de synchronisation manquant : {name}")
+    return meta
+
+
 def start_worker(job_id: str, phase: str = "start") -> dict:
     if phase not in {"start", "resume"}:
         raise ValueError("Action du worker invalide")
@@ -494,18 +537,10 @@ def start_worker(job_id: str, phase: str = "start") -> dict:
         engine.add_event(job_id, "stickman_worker", waiting_status, message)
         return {"id": job_id, "state": waiting_state, "recovered": True}
 
-    if config.get("viral_template"):
-        raise ValueError(
-            "Storyboard viral préparé, mais voix podcast ElevenLabs et timestamps mot à mot "
-            "non raccordés. Le rendu est bloqué pour éviter toute dépense ou substitution "
-            "automatique par la voix Piper. Consulte viral_timeline_report.json."
-        )
     try:
-        narration = piper_tts.ensure_job_narration(folder, config, phase=phase)
-    except piper_tts.PiperError as exc:
+        narration = _ensure_narration(folder, config, phase)
+    except (piper_tts.PiperError, voice_studio.VoiceError) as exc:
         raise ValueError(str(exc)) from exc
-    if phase == "start" and not narration.get("ready", True):
-        raise ValueError(str(narration.get("note") or "Piper n'est pas prêt."))
     if not agents.stickman_status().get("runtime_ready"):
         raise ValueError("Runtime Stickman incomplet. Vérifie Node, dépendances, FFmpeg/FFprobe et polices.")
     settings = engine_manager.get_settings()
@@ -602,14 +637,7 @@ def run_worker(job_id: str, phase: str) -> int:
     try:
         engine.init()
         job, config, folder = _active_job(job_id)
-        if config.get("viral_template"):
-            raise ValueError(
-                "Le scénario viral exige une vraie voix podcast ElevenLabs et des timestamps "
-                "par mot avant le rendu ; aucun appel facturable n'est autorisé."
-            )
-        narration = piper_tts.ensure_job_narration(folder, config, phase=phase)
-        if phase == "start" and not narration.get("ready", True):
-            raise piper_tts.PiperError(str(narration.get("note") or "Piper n'est pas prêt."))
+        narration = _ensure_narration(folder, config, phase)
         (folder / "stickman_worker.launch.lock").unlink(missing_ok=True)
         current = _read_state(folder)
         current.update({
