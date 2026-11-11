@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
 import engine_manager
+import smart_router
 import quota_monitor
 import piper_tts
 import voice_studio
@@ -92,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
                                "stickman": stickman_status(), "codex": stickman_worker.codex_status(),
                                "engines": engine_manager.get_engine_status(),
                                "engine_settings": engine_manager.get_settings(),
+                               "routing_profiles": smart_router.route_snapshot(engine_manager.get_settings()),
                                "engine_quotas": {
                                    key: quota_monitor.get_quota(key)
                                    for key in engine_manager.PROVIDERS
@@ -272,6 +274,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, {
                     "settings": settings,
                     "engines": engine_manager.get_engine_status(refresh=True),
+                    "routing_profiles": smart_router.route_snapshot(settings),
                     "quotas": {key: quota_monitor.get_quota(key) for key in engine_manager.PROVIDERS}
                 })
             except (ValueError, TypeError) as exc:

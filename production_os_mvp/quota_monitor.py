@@ -252,6 +252,10 @@ def invalidate_cache() -> None:
 def get_quota(provider: str, refresh: bool = False) -> dict:
     if provider == "ollama":
         return _unknown("ollama", "Modèle local : pas de quota cloud en pourcentage.")
+    if provider == "opencode":
+        model = engine_manager._opencode_model(engine_manager.get_settings())
+        note = "OpenCode avec Ollama local : sans quota cloud." if model.startswith("ollama/") else "Quota OpenCode inconnu : dépend du fournisseur du modèle."
+        return _unknown("opencode", note)
     if provider not in {"codex", "antigravity"}:
         return _unknown(provider, "Moteur inconnu.")
     now = time.monotonic()
