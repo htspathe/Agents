@@ -1,6 +1,7 @@
 """Local Codex worker that runs Stickman from the Production OS dashboard."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
