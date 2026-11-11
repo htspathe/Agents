@@ -240,7 +240,7 @@ def _opencode_model(settings: dict) -> str:
 def _model_allowed(model: str, settings: dict) -> bool:
     if settings.get("allow_paid_calls", False):
         return True
-    if model.startswith(("ollama/", "lmstudio/", "vllm/")):
+    if model.startswith("ollama/"):
         return True
     free_models = {
         name.strip() for name in os.environ.get("PRODUCTION_OPENCODE_FREE_MODELS", "").split(",")
@@ -369,7 +369,9 @@ def get_engine_status(refresh: bool = False) -> dict:
     oc_allowed = _model_allowed(oc_model, settings)
     gemini_api_key_mode = _antigravity_api_key_mode()
     allow_gemini_api_key = settings.get("allow_gemini_api_key", False)
-    antigravity_ready = bool(agy and agy_version and (not gemini_api_key_mode or allow_gemini_api_key))
+    antigravity_ready = bool(agy and agy_version and (
+        not gemini_api_key_mode or (allow_gemini_api_key and settings.get("allow_paid_calls", False))
+    ))
     antigravity_note = (
         "Mode Gemini API par clé détecté : appels potentiellement facturables. Autorisation désactivée dans Production OS."
         if gemini_api_key_mode and not allow_gemini_api_key
@@ -601,6 +603,17 @@ def generate_text(prompt: str, fallback: str, ctx: dict) -> str:
         if not status.get(provider, {}).get("ready"):
             attempted.append(f"{provider}: non disponible")
             continue
+        # Check billing again at invocation time; cached status is not an authorization.
+        if not settings.get("allow_paid_calls", False):
+            if provider == "opencode" and not _model_allowed(_opencode_model(settings), settings):
+                attempted.append("opencode: modèle potentiellement facturable bloqué")
+                continue
+            if provider == "antigravity" and _antigravity_api_key_mode():
+                attempted.append("antigravity: API Gemini facturable bloquée")
+                continue
+            if provider == "codex" and os.environ.get("OPENAI_API_KEY", "").strip():
+                attempted.append("codex: clé OPENAI_API_KEY détectée, mode budget zéro")
+                continue
         if settings.get("auto_fallback", True):
             low, info = quota_monitor.quota_exhausted_soon(
                 provider, settings.get("switch_at_remaining_percent", 5)
