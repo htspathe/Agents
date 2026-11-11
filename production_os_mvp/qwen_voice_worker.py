@@ -31,9 +31,10 @@ def main():
         "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
         device_map="cpu", dtype=torch.float32
     )
+    # The 0.6B CustomVoice variant supports fixed speaker presets, not full
+    # natural-language style control. A separate 1.7B model is needed for that.
     result, sr = model.generate_custom_voice(
-        text=text, language="French", speaker=speaker,
-        instruct=data.get("style") or "Warm, low, clear male documentary podcast narrator."
+        text=text, language="French", speaker=speaker
     )
     sf.write(str(output), result[0], sr, subtype="PCM_16")
     print(json.dumps({"success": True, "audio_file": output.name, "sample_rate": sr}))
