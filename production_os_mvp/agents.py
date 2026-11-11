@@ -19,6 +19,7 @@ from functools import lru_cache
 
 import engine_manager
 import piper_tts
+import viral_storyboard
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -230,8 +231,31 @@ def video(ctx, folder):
 
         content_file = folder / "content.md"
         script = content_file.read_text(encoding="utf-8") if content_file.is_file() else ctx["brief"]
-        narration_info = piper_tts.prepare_job_narration(folder, ctx)
-        config["narration_provider"] = "piper"
+        timeline = None
+        timeline_report = None
+        if ctx.get("viral_template"):
+            timeline_report = viral_storyboard.stage_template(folder, ctx["viral_template"])
+            timeline = viral_storyboard.load_template(ctx["viral_template"])
+            # ElevenLabs is an explicit *creative* request. No paid provider is
+            # contacted and the old female Piper voice is never substituted.
+            narration_info = {
+                "ready": False,
+                "note": (
+                    "La voix masculine podcast ElevenLabs et son alignement mot à mot "
+                    "n'ont pas été générés. Connexion/autorisation explicite requise "
+                    "avant le rendu ; aucune API payante n'a été appelée."
+                ),
+                "voice": timeline["metadata"]["voice_style"],
+            }
+            config["viral_template"] = ctx["viral_template"]
+            config["viral_timeline_file"] = "viral_timeline.json"
+            config["viral_voiceover_file"] = "viral_voiceover.txt"
+            config["requires_word_timestamps"] = True
+        else:
+            narration_info = piper_tts.prepare_job_narration(folder, ctx)
+        config["narration_provider"] = (
+            timeline["metadata"]["voice_provider"] + "_pending" if timeline else "piper"
+        )
         config["narration_voice"] = narration_info.get("voice", piper_tts.get_settings()["voice"])
         config["narration_audio"] = "narration.wav" if narration_info.get("ready") else None
         config["narration_ready"] = bool(narration_info.get("ready"))
@@ -240,6 +264,11 @@ def video(ctx, folder):
             ctx["notes"].append(
                 f"Voix off générée localement avec Piper ({narration_info.get('voice')}, "
                 f"{narration_info.get('duration_seconds', 0)} s)."
+            )
+        elif timeline:
+            ctx["notes"].append(
+                "Storyboard viral validé (15 scènes / 35 s). ElevenLabs est seulement "
+                "spécifié, non connecté ; aucune dépense ni génération audio."
             )
         else:
             ctx["notes"].append("Narration Piper en attente : " + str(narration_info.get("note", "configuration requise")))
@@ -259,7 +288,22 @@ def video(ctx, folder):
         autopilot_cli = str(stickman_skill_dir() / "scripts" / "autopilot.mjs")
         mission_dir = str(folder.resolve())
         skill_file = str(stickman_skill_dir() / "SKILL.md")
-        if narration_info.get("ready"):
+        if timeline:
+            narration_block = f"""## Storyboard viral minuté — contrat visuel
+- Fichier JSON strict : {mission_dir}/viral_timeline.json
+- Narration exacte, découpée par scène : {mission_dir}/viral_voiceover.txt
+- Rapport de validation : {mission_dir}/viral_timeline_report.json
+- Durée totale : 35 secondes ; 15 scènes, quatre phases narratives, format 9:16.
+- Rythme : une nouvelle progression visuelle au plus toutes les 2,5 à 3 secondes.
+- Pour chaque élément : mot déclencheur du vrai audio, anticipation -100 ms, SFX prévu.
+- Voix demandée : ElevenLabs, style podcast masculin grave et naturel.
+- Le fichier est une direction de réalisation, PAS un rendu ni une session ElevenLabs prête.
+- Ne lance pas Piper Siwis comme remplacement de cette voix demandée.
+- N'invente pas de timecodes à partir du texte : attends l'audio réel et les timestamps par mot.
+- Aucun appel ElevenLabs facturable ne peut être lancé sans autorisation explicite.
+- Ne considère pas le projet prêt à rendre tant que la voix et les timestamps ne sont pas fournis.
+"""
+        elif narration_info.get("ready"):
             narration_block = f"""## Narration obligatoire — Piper local
 - Fournisseur : Piper TTS local, hors ligne
 - Voix fixe de la chaîne : {narration_info.get('voice')}
@@ -392,7 +436,7 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
             "project_initialized": initialized, "doctor": doctor_result,
             "full_video_generated": False, "publication": "DISABLED"
         })
-        storyboard = {
+        storyboard = timeline if timeline else {
             "title": ctx["brief"], "type": "stickman_handoff",
             "mode": mode, "style": style, "aspect_ratio": ratio,
             "duration_seconds": duration, "requires_original_footage": False,
