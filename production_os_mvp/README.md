@@ -1,5 +1,29 @@
 # Production OS — MVP local V0.5
 
+## V0.5 — Routage IA par zone et tâche
+
+- Quatre moteurs texte : Codex, Antigravity/Gemini, OpenCode, Ollama.
+- Mode automatique : priorités initiales distinctes pour KDP, YouTube, Clipping, CLOGZ et pour leurs agents ; éditeur dans le tableau de bord.
+- Apprentissage : après 5 essais par moteur/tâche, la fiabilité et la durée d'exécution modulent l'ordre. Ce n'est pas un benchmark de qualité éditoriale.
+- Budget zéro : modèles OpenCode cloud bloqués par défaut (sauf liste gratuite déclarée par l'utilisateur), Gemini API verrouillée, présence de OPENAI_API_KEY bloquante pour Codex. Aucune garantie possible sur la facturation externe des comptes.
+- OpenCode : utilisation de la CLI en mode plan et permissions d'édition/commande refusées ; par défaut modèle ollama/<modèle_local>.
+- La chaîne Stickman/Piper/FFmpeg reste indépendante de la génération de texte. ComfyUI et le PDF KDP ne sont pas encore raccordés.
+- Paramètres : .production_os_engines.json ; mesures : .production_os_engine_metrics.json ; aucune clé sauvegardée.
+
+### Windows : déploiement
+
+Après fusion de la branche sur main :
+
+    cd "$HOME\Agents"
+    git pull --ff-only origin main
+    cd production_os_mvp
+    python .\app.py
+
+Installe OpenCode selon https://opencode.ai/docs/, vérifie opencode --version et démarre Ollama si modèle local.
+Dans l'interface, choisis le mode Automatique, configure les priorités par zone/tâche, clique Appliquer puis Enregistrer.
+Redémarre le serveur et actualise le navigateur après la mise à jour.
+
+Tests : python -m unittest discover -s tests -v
 **Statut : MVP local avec Voice Studio (Piper, Qwen3-TTS et ElevenLabs sur autorisation explicite), Stickman et moteur multi-agent. Génération réelle non encore validée sur le PC utilisateur.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
@@ -11,7 +35,7 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Orchestrator** : file d'exécution limitée, rôles en séquence, journal d'événements, statuts persistants SQLite.
 - **Revue humaine** : actions Approuver / Demander une correction / Rejeter. Une correction crée une nouvelle mission, conserve les livrables précédents et reprend à l'agent choisi. Une approbation ne publie rien.
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
-- **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
+- **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, OpenCode, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
 - **Video Production + Stickman + Voice Studio** : le Content Strategist produit une section de voix off dédiée ; Piper génère un WAV local avec une voix fixe ; le worker Stickman reçoit ce WAV comme narration de référence, conserve les checkpoints, importe l'aperçu, attend l'approbation humaine et reprend le rendu final avec le même fichier audio. Aucun achat, crédit ou publication n'est déclenché.
 
