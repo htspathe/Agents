@@ -1,4 +1,14 @@
-# Production OS — MVP local V0.5
+# Production OS — MVP local V0.6
+
+## V0.6 — Gestion des ressources CPU / NVIDIA
+
+- Le module resource_manager.py surveille le CPU, la RAM, la carte NVIDIA, la VRAM et les capacités FFmpeg.
+- Les prévisualisations vidéo et les exports Clipping utilisent h264_nvenc seulement après un test réel de l'encodeur.
+- Si NVENC échoue ou si la VRAM dépasse les seuils de sécurité, le rendu bascule une seule fois vers libx264.
+- Réglages par défaut adaptés à une RTX 3050 Laptop 4 Go : GPU activé, seuil VRAM à 70 %, réserve libre de 768 Mo, 6 threads CPU pour le secours et une seule tâche d'encodage GPU à la fois.
+- Les préférences sont stockées localement dans .production_os_resources.json et exclues de Git.
+- Le worker Stickman reçoit la politique d'encodage et passe ses exports MP4 par le wrapper FFmpeg partagé, qui verrouille l'accès GPU et applique le repli CPU. Le décodage CUDA, les filtres CUDA, ComfyUI et l'inférence Ollama ne sont pas déclarés accélérés tant que leurs tests spécifiques n'ont pas été exécutés.
+- Le tableau de bord affiche les mesures matérielles et permet de modifier ces seuils dans « Matériel & accélération ».
 
 ## OpenCode et ComfyUI sans Ollama (diagnostic V0.6)
 
@@ -23,8 +33,8 @@
 - Mode automatique : priorités initiales distinctes pour KDP, YouTube, Clipping, CLOGZ et pour leurs agents ; éditeur dans le tableau de bord.
 - Apprentissage : après 5 essais par moteur/tâche, la fiabilité et la durée d'exécution modulent l'ordre. Ce n'est pas un benchmark de qualité éditoriale.
 - Budget zéro : modèles OpenCode cloud bloqués par défaut (sauf liste gratuite déclarée par l'utilisateur), Gemini API verrouillée, présence de OPENAI_API_KEY bloquante pour Codex. Aucune garantie possible sur la facturation externe des comptes.
-- OpenCode : utilisation de la CLI en mode plan et permissions d'édition/commande refusées ; par défaut modèle ollama/<modèle_local>.
-- La chaîne Stickman/Piper/FFmpeg reste indépendante de la génération de texte. ComfyUI et le PDF KDP ne sont pas encore raccordés.
+- OpenCode : CLI en mode plan, permissions d'édition/commande refusées ; modèle gratuit par défaut `opencode/mimo-v2.6-flash-free`, sans dépendance à Ollama.
+- La chaîne Stickman/Piper/FFmpeg reste indépendante de la génération de texte. Le diagnostic ComfyUI est intégré ; la génération d'illustrations KDP et l'assemblage PDF restent à raccorder.
 - Paramètres : .production_os_engines.json ; mesures : .production_os_engine_metrics.json ; aucune clé sauvegardée.
 
 ### Windows : déploiement
