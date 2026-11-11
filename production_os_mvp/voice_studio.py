@@ -243,6 +243,58 @@ def _trigger_timestamps(timeline: dict, word_times: list):
     return events
 
 
+
+def _subtitle_timestamps(timeline: dict, word_times: list):
+    """Build actual subtitle cue timings from the exact ElevenLabs word alignment."""
+    cues = []
+    offset = 0
+    for scene in timeline["scenes"]:
+        spoken = scene["voiceover_text"]
+        position = 0
+        for chunk in scene["subtitles_chunks"]:
+            fragment = chunk["text"]
+            local = spoken.find(fragment, position)
+            if local < 0:
+                raise VoiceError(f"Sous-titre non alignable dans la scène {scene['scene_id']}.")
+            start = offset + local
+            end = start + len(fragment)
+            included = [w for w in word_times
+                        if w["char_start"] >= start and w["char_end"] <= end]
+            if not included:
+                raise VoiceError("Aucun timestamp réel pour un segment de sous-titre.")
+            cues.append({
+                "scene_id": scene["scene_id"], "text": fragment,
+                "highlight_word": chunk["highlight_word"],
+                "start_s": included[0]["start_s"], "end_s": included[-1]["end_s"],
+                "highlight_color": timeline["metadata"]["subtitle_highlight_color"],
+                "highlight_scale": timeline["metadata"]["subtitle_highlight_scale"],
+                "safe_zone_y": timeline["metadata"]["safe_zone_subtitles_y"],
+            })
+            position = local + len(fragment)
+        offset += len(spoken) + 1
+    return cues
+
+
+def _srt_timestamp(seconds: float) -> str:
+    millis = round(seconds * 1000)
+    hours, rem = divmod(millis, 3600000)
+    minutes, rem = divmod(rem, 60000)
+    secs, ms = divmod(rem, 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{ms:03}"
+
+
+def _write_srt(path: Path, cues: list) -> None:
+    lines = []
+    for index, cue in enumerate(cues, 1):
+        lines.extend([
+            str(index),
+            f"{_srt_timestamp(cue['start_s'])} --> {_srt_timestamp(cue['end_s'])}",
+            cue["text"],
+            "",
+        ])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _elevenlabs_audio(text: str, *, voice_id: str, allow_charge: bool, speed=1.08):
     if not allow_charge:
         raise VoiceError("Autorisation explicite requise avant cet appel ElevenLabs susceptible de consommer des crédits.")
@@ -353,6 +405,9 @@ def _complete(folder: Path, *, provider: str, voice: str, text: str, word_times=
     if timeline:
         triggers = _trigger_timestamps(timeline, word_times)
         _write_json(folder / "visual_trigger_timestamps.json", {"source": "elevenlabs", "events": triggers})
+        subtitles = _subtitle_timestamps(timeline, word_times)
+        _write_json(folder / "dynamic_subtitle_timestamps.json", {"source": "elevenlabs", "cues": subtitles})
+        _write_srt(folder / "viral_subtitles.srt", subtitles)
         last_s = word_times[-1]["end_s"]
         difference = round(abs(float(timeline["metadata"]["duration_seconds"]) - last_s), 2)
         timing_ok = difference <= 2.5
@@ -374,7 +429,8 @@ def _complete(folder: Path, *, provider: str, voice: str, text: str, word_times=
     if (folder / "stickman_project").is_dir():
         asset_dir.mkdir(parents=True, exist_ok=True)
         for file in ("narration.wav", "narration_metadata.json", "narration.md",
-                     "word_timestamps.json", "visual_trigger_timestamps.json"):
+                     "word_timestamps.json", "visual_trigger_timestamps.json",
+                     "dynamic_subtitle_timestamps.json", "viral_subtitles.srt"):
             item = folder / file
             if item.is_file():
                 shutil.copy2(item, asset_dir / file)
