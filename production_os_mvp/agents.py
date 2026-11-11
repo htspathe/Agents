@@ -502,7 +502,7 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
             ctx["notes"].append(
                 f"Prévisualisation FFmpeg de 3 s créée avec {encoded['encoder']} (fond uni, aucun métrage final)."
             )
-        except (OSError, subprocess.SubprocessError) as exc:
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             ctx["notes"].append(f"Prévisualisation indisponible : {type(exc).__name__}")
     else:
         ctx["notes"].append("FFmpeg absent : storyboard créé sans rendu vidéo.")
