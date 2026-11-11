@@ -25,3 +25,7 @@ tools/stickman-video-director/
 .production_os_piper.json
 tools/piper/
 .production_os_runtime/
+
+# Local voice studio profile; API key is never written here
+.production_os_voice_studio.json
+tools/qwen-tts/
