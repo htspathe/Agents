@@ -20,6 +20,7 @@ from functools import lru_cache
 import engine_manager
 import piper_tts
 import viral_storyboard
+import voice_studio
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -233,6 +234,7 @@ def video(ctx, folder):
         script = content_file.read_text(encoding="utf-8") if content_file.is_file() else ctx["brief"]
         timeline = None
         timeline_report = None
+        voice_provider = str(ctx.get("voice_provider") or "piper")
         if ctx.get("viral_template"):
             timeline_report = viral_storyboard.stage_template(folder, ctx["viral_template"])
             timeline = viral_storyboard.load_template(ctx["viral_template"])
@@ -251,10 +253,21 @@ def video(ctx, folder):
             config["viral_timeline_file"] = "viral_timeline.json"
             config["viral_voiceover_file"] = "viral_voiceover.txt"
             config["requires_word_timestamps"] = True
-        else:
+        elif voice_provider == "piper":
             narration_info = piper_tts.prepare_job_narration(folder, ctx)
+        else:
+            narration_info = {
+                "ready": False,
+                "voice": voice_studio.get_settings()["qwen_speaker"] if voice_provider == "qwen3_local" else "male_podcast",
+                "note": "Voix à générer depuis Voice Studio avant le rendu Stickman.",
+            }
+            write_json(folder, "voice_request.json", {
+                "provider": voice_provider, "generation_authorized": False,
+                "status": "pending", "billing": "none" if voice_provider == "qwen3_local" else "explicit_confirmation_required"
+            })
         config["narration_provider"] = (
-            timeline["metadata"]["voice_provider"] + "_pending" if timeline else "piper"
+            "elevenlabs_pending" if timeline else
+            voice_provider if narration_info.get("ready") else f"{voice_provider}_pending"
         )
         config["narration_voice"] = narration_info.get("voice", piper_tts.get_settings()["voice"])
         config["narration_audio"] = "narration.wav" if narration_info.get("ready") else None
@@ -267,8 +280,12 @@ def video(ctx, folder):
             )
         elif timeline:
             ctx["notes"].append(
-                "Storyboard viral validé (15 scènes / 35 s). ElevenLabs est seulement "
-                "spécifié, non connecté ; aucune dépense ni génération audio."
+                "Storyboard viral validé (15 scènes / 35 s). ElevenLabs est connecté dans "
+                "Voice Studio, mais la génération nécessite une confirmation explicite ; aucun appel encore lancé."
+            )
+        elif voice_provider != "piper":
+            ctx["notes"].append(
+                f"Voice Studio : {voice_provider} sélectionné. Génération WAV à demander depuis la mission ; aucune voix de remplacement."
             )
         else:
             ctx["notes"].append("Narration Piper en attente : " + str(narration_info.get("note", "configuration requise")))
@@ -302,6 +319,17 @@ def video(ctx, folder):
 - N'invente pas de timecodes à partir du texte : attends l'audio réel et les timestamps par mot.
 - Aucun appel ElevenLabs facturable ne peut être lancé sans autorisation explicite.
 - Ne considère pas le projet prêt à rendre tant que la voix et les timestamps ne sont pas fournis.
+"""
+        elif voice_provider != "piper":
+            narration_block = f"""## Narration Voice Studio en attente
+- Fournisseur : {voice_provider}
+- Synthèse vocale à lancer depuis le panneau de mission.
+- Fichier WAV attendu : {mission_dir}/narration.wav
+- Métadonnées attendues : {mission_dir}/narration_metadata.json
+- Aucun fallback sur la voix féminine Piper Siwis n'est autorisé.
+- La mission ne peut pas générer l'aperçu sans son WAV réel.
+- ElevenLabs : aucune utilisation de crédits sans confirmation explicite.
+- Qwen3-TTS : aucune installation ou consommation de RAM avant la demande locale.
 """
         elif narration_info.get("ready"):
             narration_block = f"""## Narration obligatoire — Piper local
