@@ -22,6 +22,7 @@ import engine
 import engine_manager
 import quota_monitor
 import piper_tts
+import voice_studio
 import stickman_worker
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
@@ -32,7 +33,7 @@ ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ProductionOS/0.4"
+    server_version = "ProductionOS/0.5"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[HTTP] " + fmt % args + "\n")
@@ -77,6 +78,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_blob(audio_path.read_bytes(), "audio/wav")
             return
+        if path == "/api/voices/preview-audio":
+            audio = voice_studio.ROOT / ".production_os_runtime" / "voice_studio_preview.wav"
+            if not audio.is_file():
+                return self.respond(404, {"error": "Aucun test vocal Voice Studio n'a été généré."})
+            self.send_blob(audio.read_bytes(), "audio/wav")
+            return
         if path == "/api/state":
             self.respond(200, {"jobs": engine.list_jobs(), "stats": engine.stats(),
                                "agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
@@ -90,7 +97,9 @@ class Handler(BaseHTTPRequestHandler):
                                    for key in engine_manager.PROVIDERS
                                },
                                "piper": piper_tts.get_status(),
-                               "piper_settings": piper_tts.get_settings()})
+                               "piper_settings": piper_tts.get_settings(),
+                               "voice_studio": voice_studio.status(),
+                               "voice_studio_settings": voice_studio.get_settings()})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -183,6 +192,48 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/voices/settings":
+            if length > 4000:
+                return self.respond(413, {"error": "Configuration vocale trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                self.respond(200, {"settings": voice_studio.save_settings(data),
+                                   "voice_studio": voice_studio.status()})
+            except (ValueError, TypeError) as exc:
+                self.respond(400, {"error": str(exc)[:350]})
+            return
+        if path == "/api/voices/test":
+            if length > 2000:
+                return self.respond(413, {"error": "Texte de test trop volumineux"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                text = data.get("text", "")
+                provider = data.get("provider", "")
+                approved = data.get("authorize_cloud_charge") is True
+                self.respond(200, {"result": voice_studio.generate_preview(
+                    text, provider, authorize_cloud_charge=approved
+                )})
+            except (ValueError, TypeError, voice_studio.VoiceError) as exc:
+                self.respond(400, {"error": str(exc)[:500]})
+            return
+        voice_match = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/voice/generate", path)
+        if voice_match:
+            if length > 1500:
+                return self.respond(413, {"error": "Demande vocale trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                result = voice_studio.generate_for_job(
+                    voice_match.group(1),
+                    authorize_cloud_charge=data.get("authorize_cloud_charge") is True,
+                )
+                self.respond(200, {"result": result, "id": voice_match.group(1)})
+            except (ValueError, TypeError, voice_studio.VoiceError) as exc:
+                self.respond(400, {"error": str(exc)[:500]})
+            return
         if path == "/api/piper/settings":
             if length > 5000:
                 return self.respond(413, {"error": "Configuration Piper trop volumineuse"})
