@@ -17,6 +17,7 @@ import stickman_worker
 import engine_manager
 import quota_monitor
 import piper_tts
+import viral_storyboard
 from unittest import mock
 
 
@@ -255,6 +256,67 @@ class ProductionTests(unittest.TestCase):
         self.assertNotIn("Blocage narration — Piper requis", request)
         manifest = json.loads((folder / "stickman_job.json").read_text(encoding="utf-8"))
         self.assertTrue(manifest["narration_ready"])
+
+    def test_viral_timeline_contract_and_voiceover(self):
+        data = viral_storyboard.load_template("brain_to_billions_lifestyle_inflation")
+        report = viral_storyboard.validate_timeline(data)
+        self.assertEqual(report["scenes"], 15)
+        self.assertEqual(report["duration_seconds"], 35)
+        self.assertTrue(report["requires_word_timestamps"])
+        self.assertFalse(report["audio_rendered"])
+        self.assertFalse(report["video_rendered"])
+        self.assertEqual(data["metadata"]["voice_provider"], "ElevenLabs")
+        self.assertEqual(data["scenes"][0]["narrative_phase"], "HOOK")
+        self.assertEqual(data["scenes"][-1]["seamless_loop_to_scene_id"], 1)
+
+    def test_viral_timeline_rejects_invalid_scene_and_missing_trigger(self):
+        from copy import deepcopy
+        payload = viral_storyboard.load_template("brain_to_billions_lifestyle_inflation")
+        wrong = deepcopy(payload)
+        wrong["scenes"][3]["visual_elements"][0]["trigger_word"] = "mot-inexistant"
+        with self.assertRaises(ValueError):
+            viral_storyboard.validate_timeline(wrong)
+        wrong = deepcopy(payload)
+        wrong["scenes"][2]["end_time_s"] = 9.5
+        with self.assertRaises(ValueError):
+            viral_storyboard.validate_timeline(wrong)
+
+    def test_viral_timeline_rejects_unknown_and_non_youtube_template(self):
+        with self.assertRaises(ValueError):
+            viral_storyboard.load_template("../../secrets")
+        with self.assertRaises(ValueError):
+            engine.new_job({
+                "workflow": "clogz", "brief": "Campagne test",
+                "viral_template": "brain_to_billions_lifestyle_inflation"
+            })
+
+    def test_viral_template_staged_into_youtube_mission_without_paid_tts(self):
+        with mock.patch.object(piper_tts, "prepare_job_narration", side_effect=AssertionError("Do not generate Piper for ElevenLabs preset")):
+            task = self.launch(
+                "youtube", "L'inflation du train de vie : pourquoi gagner plus ne rend pas riche",
+                stickman_duration=60, viral_template="brain_to_billions_lifestyle_inflation"
+            )
+        self.assertEqual(task["status"], "awaiting_external")
+        self.assertEqual(task["viral_template"], "brain_to_billions_lifestyle_inflation")
+        self.assertEqual(task["stickman_duration"], 35)
+        folder = engine.ROOT / "outputs" / task["id"]
+        full = json.loads((folder / "viral_timeline.json").read_text(encoding="utf-8"))
+        copy = json.loads((folder / "storyboard.json").read_text(encoding="utf-8"))
+        self.assertEqual(copy, full)
+        self.assertEqual(len(full["scenes"]), 15)
+        self.assertTrue((folder / "viral_voiceover.txt").is_file())
+        self.assertFalse((folder / "narration.wav").exists())
+        report = json.loads((folder / "viral_timeline_report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["render_status"], "not_rendered")
+        self.assertEqual(report["voice_status"], "not_generated")
+        manifest = json.loads((folder / "stickman_job.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["narration_provider"], "ElevenLabs_pending")
+        self.assertFalse(manifest["narration_ready"])
+        request = (folder / "stickman_request.md").read_text(encoding="utf-8")
+        self.assertIn("viral_timeline.json", request)
+        self.assertIn("Ne lance pas Piper Siwis", request)
+        with self.assertRaisesRegex(ValueError, "ElevenLabs"):
+            stickman_worker.start_worker(task["id"], "start")
 
     def test_youtube_storyboard(self):
         task = self.launch("youtube", "Comprendre le DCF")
