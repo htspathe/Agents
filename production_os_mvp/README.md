@@ -14,6 +14,8 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
 - **Video Production + Stickman + Piper** : le Content Strategist produit une section de voix off dédiée ; Piper génère un WAV local avec une voix fixe ; le worker Stickman reçoit ce WAV comme narration de référence, conserve les checkpoints, importe l'aperçu, attend l'approbation humaine et reprend le rendu final avec le même fichier audio. Aucun achat, crédit ou publication n'est déclenché.
+
+- **Viral Storyboard** : scénario 35 s validé et sélectionnable pour Brain to Billions, avec JSON strict et indications de synchronisation ; voix ElevenLabs et rendu réel non connectés.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -155,6 +157,21 @@ powershell -ExecutionPolicy Bypass -File .\install_stickman_windows.ps1
 Le script clone le dépôt officiel dans `tools/stickman-video-director`, installe les dépendances du runtime avec `npm ci`, lance le diagnostic, puis expose le même Skill à Codex et Claude Code via des jonctions locales. Le dossier du runtime et les jonctions sont ignorés par Git.
 
 Prérequis : Git, Node.js 20+, npm, FFmpeg et FFprobe. Si le diagnostic indique des dépendances manquantes, corrige-les puis relance le script. Après installation, redémarre Production OS pour actualiser l'état affiché sur le dashboard.
+
+### Storyboards viraux JSON — Brain to Billions
+
+Le scénario `storyboards/brain_to_billions_lifestyle_inflation.json` est intégré comme **modèle sélectionnable** dans **YouTube → Storyboard viral**. Il décrit les 15 scènes et les quatre phases sur 35 secondes, la palette beige/ocre/noir, les transitions, les émotions, les SFX, les sous-titres dynamiques et les déclencheurs visuels anticipés de 100 ms.
+
+Lorsqu'une mission utilise ce modèle, Production OS :
+1. valide strictement la chronologie et les valeurs autorisées avec `viral_storyboard.py` ;
+2. impose la durée **35 s**, le format **9:16** et la langue **française** ;
+3. copie la spécification dans `outputs/<mission>/viral_timeline.json` et `storyboard.json` ;
+4. extrait le texte exact dans `viral_voiceover.txt` ;
+5. fournit un rapport `viral_timeline_report.json` et inclut les règles dans le brief Stickman.
+
+**Statut réel du rendu :** ce JSON est un **contrat de réalisation**, pas un moteur vidéo ni un fichier MP4. Le moteur ElevenLabs et la voix masculine de podcast sont des **préférences créatives non connectées** ; aucune génération audio ni requête API facturable n'est déclenchée. Le bouton de rendu de cette mission reste désactivé tant qu'une véritable voix approuvée et des timestamps mot à mot ne sont pas intégrés. La voix féminine Piper Siwis n'est **pas** utilisée pour ce modèle. Le modèle ne calcule jamais des timings de mots fictifs.
+
+Les autres sujets YouTube continuent avec le workflow standard. La validation de nouvelles chronologies JSON pourra réutiliser le même contrat ; leur génération automatique à partir d'un sujet libre n'est pas encore raccordée.
 
 ### Narration Piper dans le workflow YouTube
 
