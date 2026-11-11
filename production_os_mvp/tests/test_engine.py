@@ -17,6 +17,7 @@ import stickman_worker
 import engine_manager
 import quota_monitor
 import piper_tts
+import voice_studio
 import viral_storyboard
 from unittest import mock
 
@@ -310,12 +311,76 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(report["render_status"], "not_rendered")
         self.assertEqual(report["voice_status"], "not_generated")
         manifest = json.loads((folder / "stickman_job.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["narration_provider"], "ElevenLabs_pending")
+        self.assertEqual(manifest["narration_provider"], "elevenlabs_pending")
         self.assertFalse(manifest["narration_ready"])
         request = (folder / "stickman_request.md").read_text(encoding="utf-8")
         self.assertIn("viral_timeline.json", request)
         self.assertIn("Ne lance pas Piper Siwis", request)
-        with self.assertRaisesRegex(ValueError, "ElevenLabs"):
+        with self.assertRaisesRegex(ValueError, "elevenlabs"):
+            stickman_worker.start_worker(task["id"], "start")
+
+    def test_voice_studio_validates_settings_and_never_persists_secret(self):
+        with tempfile.TemporaryDirectory() as temp:
+            file = Path(temp) / "voice.json"
+            with mock.patch.object(voice_studio, "settings_path", return_value=file):
+                current = voice_studio.save_settings({
+                    "provider": "qwen3_local", "qwen_speaker": "Uncle_Fu",
+                    "qwen_style": "Warm male podcast narrator.",
+                    "elevenlabs_voice_id": "JBFqnCBsd6RMkjVDRZzb"
+                })
+                self.assertEqual(current["provider"], "qwen3_local")
+                self.assertNotIn("api_key", file.read_text(encoding="utf-8"))
+                with self.assertRaises(ValueError):
+                    voice_studio.save_settings({"provider": "invalid"})
+
+    def test_voice_studio_cannot_call_elevenlabs_without_explicit_consent(self):
+        with mock.patch.dict(__import__("os").environ, {
+            "ELEVENLABS_API_KEY": "test-secret-never-shared"
+        }), mock.patch.object(voice_studio.urllib.request, "urlopen",
+                             side_effect=AssertionError("No request permitted")):
+            with self.assertRaisesRegex(voice_studio.VoiceError, "Autorisation explicite"):
+                voice_studio._elevenlabs_audio(
+                    "Bienvenue dans Brain to Billions.", voice_id="JBFqnCBsd6RMkjVDRZzb",
+                    allow_charge=False
+                )
+
+    def test_voice_studio_real_character_alignment_maps_viral_triggers(self):
+        timeline = viral_storyboard.load_template("brain_to_billions_lifestyle_inflation")
+        spoken = " ".join(s["voiceover_text"] for s in timeline["scenes"])
+        chars = list(spoken)
+        alignment = {
+            "characters": chars,
+            "character_start_times_seconds": [i * 0.025 for i in range(len(chars))],
+            "character_end_times_seconds": [(i + 1) * 0.025 for i in range(len(chars))],
+        }
+        words = voice_studio._word_alignments(spoken, alignment)
+        events = voice_studio._trigger_timestamps(timeline, words)
+        self.assertTrue(words)
+        self.assertEqual(len(events), sum(len(s["visual_elements"]) for s in timeline["scenes"]))
+        self.assertTrue(all(e["lead_in_ms"] == -100 for e in events))
+        self.assertTrue(all(e["event_time_s"] >= 0 for e in events))
+
+    def test_voice_studio_qwen_respects_memory_guard(self):
+        with mock.patch.object(voice_studio, "qwen_python", return_value=sys.executable), \
+             mock.patch.object(voice_studio, "available_ram_gb", return_value=1.8), \
+             mock.patch.object(voice_studio.subprocess, "run",
+                               side_effect=AssertionError("No model must load with low RAM")):
+            with self.assertRaisesRegex(voice_studio.VoiceError, "RAM insuffisante"):
+                voice_studio._local_qwen(
+                    "Ceci est un test de la voix masculine de podcast.",
+                    Path(engine.ROOT) / "outputs" / "preview.wav", "Uncle_Fu", "Warm"
+                )
+
+    def test_mission_qwen_selects_male_voice_without_generating_piper(self):
+        with mock.patch.object(piper_tts, "prepare_job_narration",
+                               side_effect=AssertionError("No Piper fallback permitted")):
+            task = self.launch("youtube", "Pourquoi la dette personnelle augmente ?",
+                               voice_provider="qwen3_local")
+        folder = engine.ROOT / "outputs" / task["id"]
+        self.assertEqual(task["voice_provider"], "qwen3_local")
+        self.assertTrue((folder / "voice_request.json").is_file())
+        self.assertFalse((folder / "narration.wav").exists())
+        with self.assertRaisesRegex(ValueError, "qwen3_local"):
             stickman_worker.start_worker(task["id"], "start")
 
     def test_youtube_storyboard(self):
