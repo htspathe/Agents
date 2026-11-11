@@ -109,7 +109,7 @@ def new_job(data: dict) -> str:
         raise ValueError("La durée Stickman doit être comprise entre 15 et 3600 secondes")
     if viral_template:
         stickman_duration = int(selected["metadata"]["duration_seconds"])
-    voice_provider = str(data.get("voice_provider") or voice_studio.get_settings()["provider"]).strip()
+    voice_provider = str(data.get("voice_provider") or "piper").strip()
     if typ == "youtube" and stickman_enabled and voice_provider not in voice_studio.PROVIDERS:
         raise ValueError("Fournisseur vocal invalide")
     if viral_template:
