@@ -434,6 +434,7 @@ def job_detail(job_id):
     job["stickman_style"] = input_data.get("stickman_style", "B1")
     job["aspect_ratio"] = input_data.get("aspect_ratio", "9:16")
     job["stickman_duration"] = input_data.get("stickman_duration", 60)
+    job["viral_template"] = input_data.get("viral_template") or None
     folder = (ROOT / "outputs" / job_id).resolve()
     job["files"] = [
         {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
