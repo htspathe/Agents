@@ -77,6 +77,30 @@ class ResourceManagerTests(unittest.TestCase):
         self.assertIn("veryfast", args)
         self.assertEqual(args[args.index("-threads") + 1], "4")
 
+    def test_wrapped_ffmpeg_replaces_codec_and_uses_nvenc(self):
+        output = Path(self.tmp.name) / "wrapped.mp4"
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            Path(command[-1]).write_bytes(b"wrapped-mp4")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(resource_manager.shutil, "which", return_value="ffmpeg"):
+            with mock.patch.object(resource_manager, "choose_video_encoder", return_value="h264_nvenc"):
+                with mock.patch.object(resource_manager, "gpu_task_lock", return_value=nullcontext()):
+                    with mock.patch.object(resource_manager.subprocess, "run", side_effect=fake_run):
+                        result = resource_manager.run_ffmpeg_command([
+                            "--", "-y", "-i", "input.mp4", "-c:v", "libx264",
+                            "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
+                            str(output),
+                        ])
+        self.assertEqual(result["encoder"], "h264_nvenc")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("h264_nvenc", calls[0])
+        self.assertNotIn("libx264", calls[0])
+        self.assertTrue(output.is_file())
+
     def test_nvenc_failure_retries_once_with_cpu(self):
         output = Path(self.tmp.name) / "render.mp4"
         calls = []
