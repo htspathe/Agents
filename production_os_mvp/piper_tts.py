@@ -6,7 +6,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SETTINGS_FILE = ".production_os_piper.json"
 DEFAULT_VOICE = "fr_FR-siwis-medium"
-SUPPORTED_VOICES = {DEFAULT_VOICE}
+SUPPORTED_VOICES = {DEFAULT_VOICE, "fr_FR-upmc-medium"}
+VOICE_DATA = {
+    "fr_FR-siwis-medium": {
+        "speaker_id": None, "gender": "female",
+        "dataset_license": "CC BY 4.0", "model_repository_license": "MIT",
+        "attribution": "",
+    },
+    "fr_FR-upmc-medium": {
+        "speaker_id": 1, "gender": "male",
+        "dataset_license": "CC BY-SA 4.0", "model_repository_license": "MIT",
+        "attribution": (
+            "Piper fr_FR-upmc-medium, locuteur Pierre (speaker 1), "
+            "UPMC / MaryTTS French speech corpus. Jeu de données : CC BY-SA 4.0. "
+            "https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/upmc/medium"
+        ),
+    },
+}
 VOICE_PATTERN = re.compile(r"^[a-z]{2}_[A-Z]{2}-[a-z0-9_-]+-(?:x_low|low|medium|high)$")
 VOICE_LICENSE = "Dataset CC BY 4.0; model repository MIT"
 DATASET_LICENSE = "CC BY 4.0"
@@ -18,6 +34,7 @@ VOICE_CREDIT = (
     "Licence du jeu de données : CC BY 4.0. Dépôt du modèle : MIT. Modèle : "
     "https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/medium"
 )
+VOICE_DATA["fr_FR-siwis-medium"]["attribution"] = VOICE_CREDIT
 DEFAULT_SETTINGS = {"enabled": True, "voice": DEFAULT_VOICE, "python_path": "", "voice_dir": "", "sentence_silence": 0.18}
 SETTINGS_SCHEMA_VERSION = 1
 _STATUS_CACHE = None
@@ -92,7 +109,7 @@ def save_settings(data):
     if not isinstance(enabled, bool):
         raise ValueError("Le paramètre d'activation Piper doit être booléen.")
     if not isinstance(voice, str) or voice.strip() not in SUPPORTED_VOICES:
-        raise ValueError("Voix non configurée dans le catalogue Production OS. La voix disponible est fr_FR-siwis-medium.")
+        raise ValueError("Voix non configurée dans le catalogue Production OS. Voix disponibles : fr_FR-siwis-medium et fr_FR-upmc-medium.")
     if not isinstance(python_path, str) or len(python_path.strip()) > 1000:
         raise ValueError("Chemin Python Piper invalide.")
     if not isinstance(voice_dir, str) or len(voice_dir.strip()) > 1000:
@@ -200,12 +217,15 @@ def get_status(refresh=False):
         note = f"Modèle {settings['voice']} absent. Télécharge la voix avec le script d'installation Piper."
     else:
         note = f"Piper prêt avec {settings['voice']}."
+    voice_info = VOICE_DATA[settings["voice"]]
     status = {"enabled": enabled, "installed": bool(python_path), "voice_available": bool(voice_dir),
               "ready": ready, "voice": settings["voice"], "python_path": python_path or settings["python_path"],
               "voice_dir": voice_dir or settings["voice_dir"], "model_path": model_path, "note": note,
-              "voice_license": VOICE_LICENSE, "dataset_license": DATASET_LICENSE,
-              "model_repository_license": MODEL_REPOSITORY_LICENSE,
-              "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE, "offline": True}
+              "voice_license": f"Dataset {voice_info['dataset_license']}; model repository {voice_info['model_repository_license']}",
+              "dataset_license": voice_info["dataset_license"],
+              "model_repository_license": voice_info["model_repository_license"],
+              "voice_attribution": voice_info["attribution"], "speaker_id": voice_info["speaker_id"],
+              "gender": voice_info["gender"], "engine_license": ENGINE_LICENSE, "offline": True}
     _STATUS_CACHE, _STATUS_CACHE_AT = status, now
     return json.loads(json.dumps(status))
 
@@ -307,6 +327,9 @@ def synthesize_to_wav(text, output_path, settings=None):
         command = [status["python_path"], "-m", "piper", "-m", settings["voice"],
                    "--data-dir", status["voice_dir"], "--input-file", str(text_file),
                    "-f", str(output_path), "--sentence-silence", str(settings["sentence_silence"])]
+        speaker = VOICE_DATA[settings["voice"]].get("speaker_id")
+        if speaker is not None:
+            command.extend(["--speaker", str(speaker)])
         try:
             cp = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
                                 errors="replace", timeout=300, check=False)
@@ -467,16 +490,20 @@ def prepare_job_narration(folder, ctx, force=False):
         info = {"ready": False, "note": note, "voice": settings["voice"]}
         _update_mission_files(folder, info)
         return info
-    metadata = {**result, "voice": settings["voice"], "voice_license": VOICE_LICENSE,
-                "dataset_license": DATASET_LICENSE, "model_repository_license": MODEL_REPOSITORY_LICENSE,
-                "voice_attribution": VOICE_CREDIT, "engine_license": ENGINE_LICENSE,
+    voice_info = VOICE_DATA[settings["voice"]]
+    metadata = {**result, "voice": settings["voice"],
+                "speaker_id": voice_info["speaker_id"], "gender": voice_info["gender"],
+                "voice_license": f"Dataset {voice_info['dataset_license']}; model repository {voice_info['model_repository_license']}",
+                "dataset_license": voice_info["dataset_license"],
+                "model_repository_license": voice_info["model_repository_license"],
+                "voice_attribution": voice_info["attribution"], "engine_license": ENGINE_LICENSE,
                 "script_sha256": script_hash, "script_characters": len(narration),
                 "narration_source": narration_source,
                 "target_duration_seconds": int(ctx.get("stickman_duration", 60) or 60),
                 "language": language,
                 "created_at": time.time(), "offline": True}
     _write_json(metadata_path, metadata)
-    attribution = ("# Attribution de la voix\n\n" + VOICE_CREDIT + "\n\n"
+    attribution = ("# Attribution de la voix\n\n" + voice_info["attribution"] + "\n\n"
                    "Le moteur Piper local est distribué sous licence GPL-3.0-or-later. "
                    "La licence du moteur, celle du dépôt du modèle et celle du jeu de données sont distinctes.\n")
     (folder / "voice_attribution.md").write_text(attribution, encoding="utf-8")
