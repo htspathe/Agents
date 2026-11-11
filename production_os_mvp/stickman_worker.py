@@ -223,7 +223,7 @@ def _prompt(
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré vérifié : h264_nvenc (NVIDIA NVENC).
-- Pour chaque export MP4, utilise obligatoirement le wrapper : python "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
+- Pour chaque export MP4, utilise obligatoirement le wrapper : "{python_exe}" "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
 - Le wrapper choisit l'encodeur, verrouille l'accès GPU, vérifie le fichier produit et retente une seule fois avec libx264 si NVENC échoue.
 - Seuils : {max_vram_percent} % de VRAM utilisée maximum et {min_free_vram_mb} Mo libres minimum ; une seule tâche d'encodage GPU simultanée.
 - Ne passe pas toi-même -c:v, -preset, -crf, -b:v, -threads ou -pix_fmt : le wrapper les définit.
@@ -233,7 +233,7 @@ ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré actuel : libx264 (CPU), car NVENC n'est pas disponible ou la VRAM est sous le seuil.
-- Utilise le même wrapper pour chaque export MP4 : python "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
+- Utilise le même wrapper pour chaque export MP4 : "{python_exe}" "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
 - Le wrapper applique le profil CPU à {cpu_threads} threads et réévalue NVENC lors du prochain diagnostic.
 - Ne passe pas toi-même -c:v, -preset, -crf, -b:v, -threads ou -pix_fmt ; ne force pas -hwaccel cuda.
 """
