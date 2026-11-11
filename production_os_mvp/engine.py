@@ -156,6 +156,7 @@ def run_job(job_id: str) -> None:
         if start_agent != "orchestrator":
             steps = steps[steps.index(start_agent):]
         for agent in steps:
+            ctx["active_agent"] = agent
             add_event(job_id, agent, "running", "Exécution")
             artifact = HANDLERS[agent](ctx, folder)
             add_event(job_id, agent, "done", f"Livrable : {artifact}")
