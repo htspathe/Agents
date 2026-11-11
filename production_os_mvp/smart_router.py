@@ -89,7 +89,7 @@ def validate_priorities(zones: object, tasks: object) -> tuple[dict, dict]:
 
 
 def initial_order(settings: dict, workflow: str = "", task: str = "") -> list[str]:
-    if settings.get("selection_mode") == "manual":
+    if settings.get("selection_mode", "manual") == "manual":
         primary = settings.get("primary", "codex")
         fallback = settings.get("fallbacks", [])
         return clean_order([primary, *fallback] if settings.get("auto_fallback", True) else [primary])
