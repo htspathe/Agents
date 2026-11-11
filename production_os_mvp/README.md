@@ -1,5 +1,22 @@
 # Production OS — MVP local V0.5
 
+## OpenCode et ComfyUI sans Ollama (diagnostic V0.6)
+
+- OpenCode accepte par défaut un modèle distant explicitement marqué `-free` (`opencode/mimo-v2.6-flash-free`) et ne nécessite pas Ollama. Modèles gratuits alternatifs configurables dans l'interface ; l'authentification reste propre au fournisseur.
+- L'ancien identifiant invalide `ollama/` est neutralisé à la lecture des paramètres et remplacé par le modèle gratuit par défaut. Les modèles non gratuits restent interdits lorsque `allow_paid_calls` est désactivé.
+- L'API locale ComfyUI est testée via `GET http://127.0.0.1:8188/system_stats` ; inventaire best-effort des checkpoints et modèles de diffusion. Aucun rendu n'est lancé, aucun téléchargement automatique.
+- Un modèle OpenCode `-free` utilise un fournisseur en ligne : le trafic et les limites du fournisseur s'appliquent. N'envoie aucune donnée sensible dans ces tests.
+- Pour vérifier les deux composants sous Windows, lance depuis le dossier `production_os_mvp` :
+
+    powershell -ExecutionPolicy Bypass -File .\diagnose_opencode_comfyui.ps1
+
+- Pour déclencher volontairement une requête texte **vers un modèle gratuit distant**, ajoute `-TestOpenCode` ; des identifiants peuvent être requis :
+
+    powershell -ExecutionPolicy Bypass -File .\diagnose_opencode_comfyui.ps1 -TestOpenCode
+
+- Redémarre le serveur Python et actualise la console pour afficher le panneau de diagnostic ComfyUI.
+- La génération d'image KDP nécessite encore un workflow ComfyUI API et un modèle visuel compatibles : ce diagnostic n'en est pas une preuve de fonctionnement.
+
 ## V0.5 — Routage IA par zone et tâche
 
 - Quatre moteurs texte : Codex, Antigravity/Gemini, OpenCode, Ollama.
