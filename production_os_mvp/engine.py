@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from agents import AGENTS, HANDLERS, LABELS, ROOT, WORKFLOW_STEPS, safe_text
+import viral_storyboard
 
 DB = ROOT / "production_os.sqlite3"
 LOCK = threading.Lock()
@@ -82,6 +83,12 @@ def new_job(data: dict) -> str:
     stickman_mode = str(data.get("stickman_mode", "autopilot")).lower()
     stickman_style = str(data.get("stickman_style", "B1")).upper()
     aspect_ratio = str(data.get("aspect_ratio", "9:16"))
+    viral_template = safe_text(data.get("viral_template"), 100)
+    if viral_template:
+        if typ != "youtube" or not stickman_enabled:
+            raise ValueError("Les storyboards viraux nécessitent le workflow YouTube et Stickman.")
+        selected = viral_storyboard.load_template(viral_template)
+        aspect_ratio = "9:16"
     if typ == "youtube" and stickman_enabled:
         if stickman_mode not in {"autopilot", "director"}:
             raise ValueError("Mode Stickman invalide")
@@ -99,6 +106,8 @@ def new_job(data: dict) -> str:
         raise ValueError("Durée Stickman invalide")
     if typ == "youtube" and stickman_enabled and not 15 <= stickman_duration <= 3600:
         raise ValueError("La durée Stickman doit être comprise entre 15 et 3600 secondes")
+    if viral_template:
+        stickman_duration = int(selected["metadata"]["duration_seconds"])
     clean = {"workflow": typ, "brief": brief, "source_file": safe_text(data.get("source_file"), 170),
              "rights_confirmed": bool(data.get("rights_confirmed")),
              "start": data.get("start", 0), "end": data.get("end", 10),
@@ -106,7 +115,8 @@ def new_job(data: dict) -> str:
              "start_agent": start_agent, "stickman_enabled": stickman_enabled,
              "stickman_mode": stickman_mode, "stickman_style": stickman_style,
              "aspect_ratio": aspect_ratio, "stickman_duration": stickman_duration,
-             "language": safe_text(data.get("language", "fr"), 12) or "fr",
+             "viral_template": viral_template,
+             "language": "fr" if viral_template else (safe_text(data.get("language", "fr"), 12) or "fr"),
              "channel": safe_text(data.get("channel", "Brain to Billions"), 80) or "Brain to Billions"}
     with LOCK, connect() as db:
         db.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)",
