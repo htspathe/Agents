@@ -1,4 +1,14 @@
-# Production OS — MVP local V0.5
+# Production OS — MVP local V0.6
+
+## V0.6 — Gestion des ressources CPU / NVIDIA
+
+- Le module resource_manager.py surveille le CPU, la RAM, la carte NVIDIA, la VRAM et les capacités FFmpeg.
+- Les prévisualisations vidéo et les exports Clipping utilisent h264_nvenc seulement après un test réel de l'encodeur.
+- Si NVENC échoue ou si la VRAM dépasse les seuils de sécurité, le rendu bascule une seule fois vers libx264.
+- Réglages par défaut adaptés à une RTX 3050 Laptop 4 Go : GPU activé, seuil VRAM à 70 %, réserve libre de 768 Mo, 6 threads CPU pour le secours et une seule tâche d'encodage GPU à la fois.
+- Les préférences sont stockées localement dans .production_os_resources.json et exclues de Git.
+- Le worker Stickman reçoit la politique d'encodage détectée. Le décodage CUDA, les filtres CUDA, ComfyUI et l'inférence Ollama ne sont pas déclarés accélérés tant que leurs tests spécifiques n'ont pas été exécutés.
+- Le tableau de bord affiche les mesures matérielles et permet de modifier ces seuils dans « Matériel & accélération ».
 
 ## V0.5 — Routage IA par zone et tâche
 
