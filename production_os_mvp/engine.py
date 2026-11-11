@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from agents import AGENTS, HANDLERS, LABELS, ROOT, WORKFLOW_STEPS, safe_text
 import viral_storyboard
+import voice_studio
 
 DB = ROOT / "production_os.sqlite3"
 LOCK = threading.Lock()
@@ -108,6 +109,11 @@ def new_job(data: dict) -> str:
         raise ValueError("La durée Stickman doit être comprise entre 15 et 3600 secondes")
     if viral_template:
         stickman_duration = int(selected["metadata"]["duration_seconds"])
+    voice_provider = str(data.get("voice_provider") or voice_studio.get_settings()["provider"]).strip()
+    if typ == "youtube" and stickman_enabled and voice_provider not in voice_studio.PROVIDERS:
+        raise ValueError("Fournisseur vocal invalide")
+    if viral_template:
+        voice_provider = "elevenlabs"  # Word-level timing required, no cloud call without approval.
     clean = {"workflow": typ, "brief": brief, "source_file": safe_text(data.get("source_file"), 170),
              "rights_confirmed": bool(data.get("rights_confirmed")),
              "start": data.get("start", 0), "end": data.get("end", 10),
@@ -115,7 +121,7 @@ def new_job(data: dict) -> str:
              "start_agent": start_agent, "stickman_enabled": stickman_enabled,
              "stickman_mode": stickman_mode, "stickman_style": stickman_style,
              "aspect_ratio": aspect_ratio, "stickman_duration": stickman_duration,
-             "viral_template": viral_template,
+             "viral_template": viral_template, "voice_provider": voice_provider if stickman_enabled else "",
              "language": "fr" if viral_template else (safe_text(data.get("language", "fr"), 12) or "fr"),
              "channel": safe_text(data.get("channel", "Brain to Billions"), 80) or "Brain to Billions"}
     with LOCK, connect() as db:
@@ -435,6 +441,7 @@ def job_detail(job_id):
     job["aspect_ratio"] = input_data.get("aspect_ratio", "9:16")
     job["stickman_duration"] = input_data.get("stickman_duration", 60)
     job["viral_template"] = input_data.get("viral_template") or None
+    job["voice_provider"] = input_data.get("voice_provider") or "piper"
     folder = (ROOT / "outputs" / job_id).resolve()
     job["files"] = [
         {"name": p.relative_to(folder).as_posix(), "size": p.stat().st_size}
