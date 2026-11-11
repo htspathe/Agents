@@ -214,6 +214,7 @@ def _prompt(
         "La narration n'a pas de timestamps mot à mot vérifiés."
     )
     video_policy = resource_manager.get_video_policy()
+    resource_manager_script = Path(resource_manager.__file__).resolve()
     preferred_encoder = video_policy["preferred_encoder"]
     min_free_vram_mb = video_policy["min_free_vram_mb"]
     max_vram_percent = video_policy["max_vram_percent"]
@@ -222,18 +223,19 @@ def _prompt(
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré vérifié : h264_nvenc (NVIDIA NVENC).
-- Pour les exports H.264, utilise -c:v h264_nvenc -preset p5 -b:v 6M -pix_fmt yuv420p.
-- Si NVENC échoue, si la VRAM libre passe sous {min_free_vram_mb} Mo ou si l'utilisation dépasse {max_vram_percent} %, bascule une seule fois vers -c:v libx264 -preset veryfast -crf 22 -threads {cpu_threads}.
-- La limite Production OS est d'une tâche d'encodage GPU simultanée.
+- Pour chaque export MP4, utilise obligatoirement le wrapper : python "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
+- Le wrapper choisit l'encodeur, verrouille l'accès GPU, vérifie le fichier produit et retente une seule fois avec libx264 si NVENC échoue.
+- Seuils : {max_vram_percent} % de VRAM utilisée maximum et {min_free_vram_mb} Mo libres minimum ; une seule tâche d'encodage GPU simultanée.
+- Ne passe pas toi-même -c:v, -preset, -crf, -b:v, -threads ou -pix_fmt : le wrapper les définit.
 - Seul l'encodage NVENC H.264 a été testé ; ne force pas -hwaccel cuda ni des filtres CUDA non vérifiés.
 """
     else:
         video_note = f"""
 ACCÉLÉRATION VIDÉO — POLITIQUE PRODUCTION OS
 - Encodeur préféré actuel : libx264 (CPU), car NVENC n'est pas disponible ou la VRAM est sous le seuil.
-- Utilise -c:v libx264 -preset veryfast -crf 22 -threads {cpu_threads}.
-- Si NVENC redevient disponible, le diagnostic Production OS l'indiquera au prochain rafraîchissement.
-- Ne force pas -hwaccel cuda ni des filtres CUDA non vérifiés.
+- Utilise le même wrapper pour chaque export MP4 : python "{resource_manager_script}" ffmpeg -- [arguments FFmpeg] sortie.mp4.
+- Le wrapper applique le profil CPU à {cpu_threads} threads et réévalue NVENC lors du prochain diagnostic.
+- Ne passe pas toi-même -c:v, -preset, -crf, -b:v, -threads ou -pix_fmt ; ne force pas -hwaccel cuda.
 """
     narration_note = f"""
 NARRATION AUDIO IMPOSÉE — {provider.upper()}
