@@ -281,11 +281,11 @@ def _elevenlabs_audio(text: str, *, voice_id: str, allow_charge: bool, speed=1.0
 
 def _local_qwen(text: str, output: Path, speaker: str, style: str):
     python = qwen_python()
-    if not python or not _qwen_package_installed(python):
-        raise VoiceError("Qwen3-TTS n'est pas installé. Lance install_qwen_tts_windows.ps1.")
     ram = available_ram_gb()
     if ram is not None and ram < 3.5:
         raise VoiceError(f"RAM insuffisante pour Qwen3-TTS : {ram:.1f} Go libres ; libère au moins 3,5 Go.")
+    if not python or not _qwen_package_installed(python):
+        raise VoiceError("Qwen3-TTS n'est pas installé. Lance install_qwen_tts_windows.ps1.")
     if speaker not in QWEN_SPEAKERS:
         raise VoiceError("Profil Qwen3-TTS non reconnu.")
     input_path = output.with_suffix(".voice-input.json")
