@@ -394,8 +394,8 @@ def video_encoder_args(profile: str = "final", encoder: str | None = None) -> li
         preset = "p3" if profile == "preview" else "p5"
         bitrate = {"preview": "1800k", "clip": "4M", "final": "6M"}[profile]
         return ["-c:v", "h264_nvenc", "-preset", preset, "-b:v", bitrate]
-    preset = {"preview": "ultrafast", "clip": "veryfast", "final": "slow"}[profile]
-    crf = {"preview": "30", "clip": "27", "final": "21"}[profile]
+    preset = {"preview": "ultrafast", "clip": "veryfast", "final": "veryfast"}[profile]
+    crf = {"preview": "30", "clip": "27", "final": "22"}[profile]
     return [
         "-c:v", "libx264", "-preset", preset, "-crf", crf,
         "-threads", str(_cpu_thread_count(get_settings())),
