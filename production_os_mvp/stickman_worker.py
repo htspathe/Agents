@@ -503,7 +503,8 @@ def _ensure_narration(folder: Path, config: dict, phase: str) -> dict:
     if config.get("viral_template"):
         if not meta.get("has_real_word_timestamps") or meta.get("timing_review_required"):
             raise ValueError("Le storyboard viral requiert des timestamps réels et une durée audio compatible avec 35 s.")
-        for name in ("word_timestamps.json", "visual_trigger_timestamps.json"):
+        for name in ("word_timestamps.json", "visual_trigger_timestamps.json",
+                     "dynamic_subtitle_timestamps.json", "viral_subtitles.srt"):
             if not (folder / name).is_file():
                 raise ValueError(f"Horodatage de synchronisation manquant : {name}")
     return meta
