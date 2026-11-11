@@ -101,6 +101,39 @@ class ResourceManagerTests(unittest.TestCase):
         self.assertNotIn("libx264", calls[0])
         self.assertTrue(output.is_file())
 
+    def test_nvenc_probe_uses_real_1080p_p5_mp4_profile(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            Path(command[-1]).write_bytes(b"valid-mp4")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(resource_manager.subprocess, "run", side_effect=fake_run):
+            ok, note = resource_manager._cached_nvenc_probe(
+                "ffmpeg", {"driver_version": "test-p5", "name": "test-gpu-p5"}
+            )
+
+        self.assertTrue(ok, note)
+        self.assertIn("Test réel H.264 NVENC 1080p MP4", note)
+        command = calls[0]
+        self.assertIn("testsrc2=size=1920x1080:rate=30", command)
+        self.assertEqual(command[command.index("-preset") + 1], "p5")
+        self.assertEqual(command[command.index("-b:v") + 1], "6M")
+        self.assertTrue(command[-1].endswith(".mp4"))
+
+    def test_nvenc_probe_rejects_success_without_output_file(self):
+        def fake_run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(resource_manager.subprocess, "run", side_effect=fake_run):
+            ok, note = resource_manager._cached_nvenc_probe(
+                "ffmpeg", {"driver_version": "test-empty", "name": "test-gpu-empty"}
+            )
+
+        self.assertFalse(ok)
+        self.assertIn("sans produire de MP4", note)
+
     def test_nvenc_failure_retries_once_with_cpu(self):
         output = Path(self.tmp.name) / "render.mp4"
         calls = []

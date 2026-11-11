@@ -251,6 +251,12 @@ def _memory_info() -> dict:
 
 
 def _cached_nvenc_probe(executable: str, gpu: dict) -> tuple[bool, str]:
+    """Run a short real MP4 encode using the same profile as production exports.
+
+    A tiny 64x64 lavfi/null-output probe can be rejected by some NVENC/FFmpeg
+    combinations even when normal 1080p MP4 encoding works. Match the user's
+    production profile (H.264, p5, 6 Mbps, yuv420p) and verify a non-empty file.
+    """
     global _NVENC_PROBE_CACHE_KEY, _NVENC_PROBE_CACHE_RESULT, _NVENC_PROBE_CACHE_AT
     key = (executable, gpu.get("driver_version"), gpu.get("name"))
     with _NVENC_PROBE_LOCK:
@@ -260,20 +266,36 @@ def _cached_nvenc_probe(executable: str, gpu: dict) -> tuple[bool, str]:
             and time.monotonic() - _NVENC_PROBE_CACHE_AT < _NVENC_PROBE_TTL_SECONDS
         ):
             return _NVENC_PROBE_CACHE_RESULT
-        probe = subprocess.run(
-            [
-                executable, "-hide_banner", "-loglevel", "error",
-                "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1",
-                "-frames:v", "1", "-an", "-c:v", "h264_nvenc",
-                "-preset", "p1", "-f", "null", "-",
-            ],
-            capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=15, check=False,
-        )
-        ok = probe.returncode == 0
-        note = "Test d'encodage H.264 NVENC réussi." if ok else (
-            "Test NVENC échoué : " + (probe.stderr or "erreur inconnue")[-260:]
-        )
+        try:
+            with tempfile.TemporaryDirectory(prefix="production-os-nvenc-probe-") as temp_dir:
+                output = Path(temp_dir) / "nvenc_probe.mp4"
+                probe = subprocess.run(
+                    [
+                        executable, "-y", "-hide_banner", "-loglevel", "error",
+                        "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30",
+                        "-t", "1", "-an", "-c:v", "h264_nvenc",
+                        "-preset", "p5", "-b:v", "6M", "-pix_fmt", "yuv420p",
+                        str(output),
+                    ],
+                    capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=20, check=False,
+                )
+                ok = (
+                    probe.returncode == 0
+                    and output.is_file()
+                    and output.stat().st_size > 0
+                )
+                if ok:
+                    note = "Test réel H.264 NVENC 1080p MP4 (preset p5, 6 Mbps) réussi."
+                elif probe.returncode == 0:
+                    note = "Test NVENC invalide : FFmpeg a terminé sans produire de MP4."
+                else:
+                    note = "Test NVENC échoué : " + (
+                        probe.stderr or probe.stdout or f"FFmpeg exit code {probe.returncode}"
+                    )[-420:]
+        except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+            ok = False
+            note = f"Test NVENC indisponible ({type(exc).__name__}) : {str(exc)[:260]}"
         _NVENC_PROBE_CACHE_KEY = key
         _NVENC_PROBE_CACHE_RESULT = (ok, note)
         _NVENC_PROBE_CACHE_AT = time.monotonic()
