@@ -12,6 +12,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -509,6 +510,102 @@ def run_video_encode(
     }
 
 
+def run_ffmpeg_command(
+    ffmpeg_args: list[str],
+    profile: str = "final",
+    timeout: int = 600,
+) -> dict:
+    """Run a single-output FFmpeg command through the shared encoder policy.
+
+    Existing video encoder/quality flags are replaced so the wrapper can apply
+    the verified NVENC profile and perform one CPU fallback when necessary.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg introuvable")
+    args = list(ffmpeg_args)
+    if args and args[0] == "--":
+        args = args[1:]
+    if len(args) < 2:
+        raise ValueError("Arguments FFmpeg incomplets : entrée et sortie requises")
+    output = args[-1]
+    base = []
+    strip_next = False
+    strip_options = {
+        "-c:v", "-codec:v", "-vcodec", "-preset", "-crf", "-b:v",
+        "-maxrate", "-bufsize", "-rc", "-cq", "-tune", "-profile:v",
+        "-threads", "-pix_fmt",
+    }
+    for item in args[:-1]:
+        if strip_next:
+            strip_next = False
+            continue
+        if item in strip_options:
+            strip_next = True
+            continue
+        base.append(item)
+    settings = get_settings()
+    preferred = choose_video_encoder()
+
+    def execute(encoder: str):
+        command = [
+            ffmpeg, "-y", "-hide_banner", *base,
+            *video_encoder_args(profile, encoder), "-pix_fmt", "yuv420p", output,
+        ]
+        try:
+            if encoder == "h264_nvenc":
+                with gpu_task_lock(timeout=min(max(timeout, 5), 300)):
+                    cp = subprocess.run(
+                        command, capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=timeout, check=False,
+                    )
+            else:
+                cp = subprocess.run(
+                    command, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=timeout, check=False,
+                )
+            if cp.returncode == 0 and output != "-" and Path(output).is_file() and Path(output).stat().st_size > 0:
+                return True, ""
+            if cp.returncode == 0 and output == "-":
+                return True, ""
+            return False, (cp.stderr or cp.stdout or f"FFmpeg exit code {cp.returncode}")[-900:]
+        except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+            return False, f"{type(exc).__name__}: {str(exc)[:600]}"
+
+    ok, error = execute(preferred)
+    used_encoder = preferred
+    fallback_used = False
+    if not ok and preferred == "h264_nvenc" and settings["cpu_fallback"]:
+        if output != "-":
+            Path(output).unlink(missing_ok=True)
+        ok, error = execute("libx264")
+        used_encoder = "libx264"
+        fallback_used = True
+    if not ok:
+        if output != "-":
+            Path(output).unlink(missing_ok=True)
+        raise RuntimeError("Échec FFmpeg : " + error)
+    return {
+        "encoder": used_encoder,
+        "fallback_used": fallback_used,
+        "note": "Repli CPU utilisé après échec NVENC." if fallback_used else f"Encodage terminé avec {used_encoder}.",
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args or args[0] != "ffmpeg":
+        print("Usage: python resource_manager.py ffmpeg -- <arguments FFmpeg>", file=sys.stderr)
+        return 2
+    try:
+        result = run_ffmpeg_command(args[1:])
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    except (ValueError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
 def get_video_policy() -> dict:
     status = get_status()
     settings = get_settings()
@@ -535,4 +632,9 @@ def worker_environment() -> dict:
         "PRODUCTION_OS_VIDEO_MIN_FREE_VRAM_MB": str(settings["min_free_vram_mb"]),
         "PRODUCTION_OS_CPU_THREADS": str(policy["cpu_threads"]),
         "PRODUCTION_OS_GPU_LOCK_PATH": str(gpu_lock_path()),
+        "PRODUCTION_OS_FFMPEG_WRAPPER": str(Path(__file__).resolve()),
     }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
