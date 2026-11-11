@@ -271,11 +271,19 @@ def _elevenlabs_audio(text: str, *, voice_id: str, allow_charge: bool, speed=1.0
     try:
         data = json.loads(body)
         audio = base64.b64decode(data["audio_base64"], validate=True)
-        words = _word_alignments(text, data.get("alignment") or data.get("normalized_alignment"))
     except (ValueError, KeyError, TypeError, base64.binascii.Error) as exc:
-        raise VoiceError("Réponse audio ElevenLabs ou minutage invalide.") from exc
+        raise VoiceError("Réponse audio ElevenLabs invalide.") from exc
     if not audio or len(audio) > 12_000_000:
         raise VoiceError("Audio ElevenLabs absent ou excessif.")
+    words = None
+    for alignment in (data.get("alignment"), data.get("normalized_alignment")):
+        try:
+            words = _word_alignments(text, alignment)
+            break
+        except VoiceError:
+            continue
+    # Never fabricate word timings. An unaligned result may still be useful
+    # audio, and will be retained in the mission before any conversion.
     return audio, words
 
 
@@ -422,6 +430,16 @@ def generate_for_job(job_id: str, *, authorize_cloud_charge=False):
                 speed = 1.08 if config.get("viral_template") else 1.0
                 audio, word_times = _elevenlabs_audio(text, voice_id=voice_id,
                                                       allow_charge=authorize_cloud_charge, speed=speed)
+                raw_mp3 = folder / "elevenlabs_source.mp3"
+                raw_mp3.write_bytes(audio)  # Preserve once-paid source even if alignment/conversion fails.
+                if config.get("viral_template") and not word_times:
+                    (folder / "voice_alignment_blocker.md").write_text(
+                        "La voix a été produite, mais ElevenLabs n'a pas retourné "
+                        "d'alignement exact. L'audio source est conservé dans "
+                        "elevenlabs_source.mp3. Aucun nouvel appel n'est lancé.\n",
+                        encoding="utf-8"
+                    )
+                    raise VoiceError("Alignement exact absent. Audio conservé : elevenlabs_source.mp3. Ne relance pas une requête payante sans revoir ce fichier.")
                 mp3 = Path(temp) / "narration.mp3"
                 mp3.write_bytes(audio)
                 _convert_mp3_to_wav(mp3, temporary_wav)
