@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import engine
 import engine_manager
+import comfyui_bridge
 import smart_router
 import quota_monitor
 import piper_tts
@@ -94,6 +95,7 @@ class Handler(BaseHTTPRequestHandler):
                                "engines": engine_manager.get_engine_status(),
                                "engine_settings": engine_manager.get_settings(),
                                "routing_profiles": smart_router.route_snapshot(engine_manager.get_settings()),
+                               "comfyui": comfyui_bridge.get_status(),
                                "engine_quotas": {
                                    key: quota_monitor.get_quota(key)
                                    for key in engine_manager.PROVIDERS
