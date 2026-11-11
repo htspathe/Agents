@@ -37,6 +37,7 @@ QWEN_SPEAKERS = {"Uncle_Fu", "Ryan", "Aiden"}
 VOICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_CHARS = 12000
 LOCK = threading.Lock()
+_QWEN_STATUS_CACHE = {"path": "", "checked": 0.0, "installed": False}
 
 
 class VoiceError(RuntimeError):
@@ -101,6 +102,26 @@ def qwen_python():
     return str(unix) if unix.is_file() else ""
 
 
+
+
+def _qwen_package_installed(py):
+    now = time.monotonic()
+    if _QWEN_STATUS_CACHE["path"] == py and now - _QWEN_STATUS_CACHE["checked"] < 30:
+        return _QWEN_STATUS_CACHE["installed"]
+    installed = False
+    if py and Path(py).is_file():
+        try:
+            cp = subprocess.run(
+                [py, "-c", "import importlib.util; print(int(importlib.util.find_spec('qwen_tts') is not None))"],
+                capture_output=True, text=True, timeout=8, check=False
+            )
+            installed = cp.returncode == 0 and cp.stdout.strip() == "1"
+        except (OSError, subprocess.SubprocessError):
+            installed = False
+    _QWEN_STATUS_CACHE.update({"path": py, "checked": now, "installed": installed})
+    return installed
+
+
 def available_ram_gb():
     if os.name != "nt":
         return None
@@ -124,7 +145,7 @@ def available_ram_gb():
 
 def status():
     py = qwen_python()
-    qwen_installed = bool(py and Path(py).is_file())
+    qwen_installed = _qwen_package_installed(py)
     ram = available_ram_gb()
     piper = piper_tts.get_status()
     settings = get_settings()
@@ -260,7 +281,7 @@ def _elevenlabs_audio(text: str, *, voice_id: str, allow_charge: bool, speed=1.0
 
 def _local_qwen(text: str, output: Path, speaker: str, style: str):
     python = qwen_python()
-    if not python or not Path(python).is_file():
+    if not python or not _qwen_package_installed(python):
         raise VoiceError("Qwen3-TTS n'est pas installé. Lance install_qwen_tts_windows.ps1.")
     ram = available_ram_gb()
     if ram is not None and ram < 3.5:
@@ -350,6 +371,20 @@ def _complete(folder: Path, *, provider: str, voice: str, text: str, word_times=
             if item.is_file():
                 shutil.copy2(item, asset_dir / file)
     (folder / "narration_blocker.md").unlink(missing_ok=True)
+    request = folder / "stickman_request.md"
+    if request.is_file():
+        with request.open("a", encoding="utf-8") as document:
+            document.write(
+                "\n\n## État réel Voice Studio après génération\n"
+                f"- Narration {provider} disponible et vérifiée : narration.wav.\n"
+                f"- Voix fixée pour cette mission : {voice}.\n"
+                "- Les anciennes mentions « non générée / en attente » sont désormais obsolètes.\n"
+                + ("- Horodatages réels des mots : word_timestamps.json. Déclencheurs : visual_trigger_timestamps.json.\n"
+                   if word_times else
+                   "- Aucun timing mot à mot certifié ; ne pas inventer de sous-titres synchronisés.\n")
+                + ("- Attention : dérive supérieure au seuil ; révision temporelle obligatoire avant rendu.\n"
+                   if meta.get("timing_review_required") else "")
+            )
     return meta
 
 
