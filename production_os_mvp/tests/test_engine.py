@@ -383,6 +383,69 @@ class ProductionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "qwen3_local"):
             stickman_worker.start_worker(task["id"], "start")
 
+    def test_piper_pierre_voice_uses_male_speaker_one(self):
+        with tempfile.TemporaryDirectory() as temp:
+            wav_path = Path(temp) / "pierre.wav"
+            commands = []
+            def synth(command, **kwargs):
+                commands.append(command)
+                with wave.open(str(wav_path), "wb") as f:
+                    f.setnchannels(1)
+                    f.setsampwidth(2)
+                    f.setframerate(22050)
+                    f.writeframes(bytes(22050 * 2))
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            settings = {"voice": "fr_FR-upmc-medium", "sentence_silence": 0.18}
+            with mock.patch.object(piper_tts, "get_status", return_value={
+                "ready": True, "python_path": sys.executable, "voice_dir": temp
+            }), mock.patch.object(piper_tts.subprocess, "run", side_effect=synth):
+                result = piper_tts.synthesize_to_wav(
+                    "Bienvenue dans notre podcast sur les finances.", wav_path, settings
+                )
+            self.assertEqual(result["voice"], "fr_FR-upmc-medium")
+            self.assertIn("--speaker", commands[0])
+            self.assertEqual(commands[0][commands[0].index("--speaker") + 1], "1")
+
+    def test_elevenlabs_alignment_builds_audio_job_without_live_api(self):
+        task = self.launch(
+            "youtube", "L'inflation du train de vie",
+            stickman_duration=35, viral_template="brain_to_billions_lifestyle_inflation"
+        )
+        folder = engine.ROOT / "outputs" / task["id"]
+        script = (folder / "viral_voiceover.txt").read_text(encoding="utf-8").strip()
+        rate = 35 / len(script)
+        alignment = {
+            "characters": list(script),
+            "character_start_times_seconds": [i * rate for i in range(len(script))],
+            "character_end_times_seconds": [(i + 1) * rate for i in range(len(script))],
+        }
+        times = voice_studio._word_alignments(script, alignment)
+        settings = {"provider": "elevenlabs", "elevenlabs_voice_id": "JBFqnCBsd6RMkjVDRZzb",
+                    "qwen_speaker": "Uncle_Fu", "qwen_style": "Warm"}
+        def fake_convert(_mp3, wav):
+            with wave.open(str(wav), "wb") as f:
+                f.setnchannels(1)
+                f.setsampwidth(2)
+                f.setframerate(8000)
+                f.writeframes(bytes(8000 * 35 * 2))
+        with mock.patch.object(voice_studio, "get_settings", return_value=settings), \
+             mock.patch.object(voice_studio.shutil, "which", return_value="ffmpeg"), \
+             mock.patch.object(voice_studio, "_elevenlabs_audio", return_value=(b"mock_mp3", times)) as api, \
+             mock.patch.object(voice_studio, "_convert_mp3_to_wav", side_effect=fake_convert):
+            meta = voice_studio.generate_for_job(task["id"], authorize_cloud_charge=True)
+        self.assertEqual(api.call_count, 1)
+        self.assertEqual(meta["provider"], "elevenlabs")
+        self.assertTrue(meta["has_real_word_timestamps"])
+        self.assertFalse(meta["timing_review_required"])
+        self.assertTrue((folder / "narration.wav").is_file())
+        self.assertTrue((folder / "visual_trigger_timestamps.json").is_file())
+        self.assertEqual(
+            stickman_worker._ensure_narration(folder, {"voice_provider": "elevenlabs",
+                                                       "viral_template": "brain_to_billions_lifestyle_inflation"},
+                                              "start")["provider"],
+            "elevenlabs"
+        )
+
     def test_youtube_storyboard(self):
         task = self.launch("youtube", "Comprendre le DCF")
         self.assertEqual(task["status"], "awaiting_external")
