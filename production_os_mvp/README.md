@@ -1,5 +1,29 @@
-# Production OS — MVP local V0.4
+# Production OS — MVP local V0.5
 
+## V0.5 — Routage IA par zone et tâche
+
+- Quatre moteurs texte : Codex, Antigravity/Gemini, OpenCode, Ollama.
+- Mode automatique : priorités initiales distinctes pour KDP, YouTube, Clipping, CLOGZ et pour leurs agents ; éditeur dans le tableau de bord.
+- Apprentissage : après 5 essais par moteur/tâche, la fiabilité et la durée d'exécution modulent l'ordre. Ce n'est pas un benchmark de qualité éditoriale.
+- Budget zéro : modèles OpenCode cloud bloqués par défaut (sauf liste gratuite déclarée par l'utilisateur), Gemini API verrouillée, présence de OPENAI_API_KEY bloquante pour Codex. Aucune garantie possible sur la facturation externe des comptes.
+- OpenCode : utilisation de la CLI en mode plan et permissions d'édition/commande refusées ; par défaut modèle ollama/<modèle_local>.
+- La chaîne Stickman/Piper/FFmpeg reste indépendante de la génération de texte. ComfyUI et le PDF KDP ne sont pas encore raccordés.
+- Paramètres : .production_os_engines.json ; mesures : .production_os_engine_metrics.json ; aucune clé sauvegardée.
+
+### Windows : déploiement
+
+Après fusion de la branche sur main :
+
+    cd "$HOME\Agents"
+    git pull --ff-only origin main
+    cd production_os_mvp
+    python .\app.py
+
+Installe OpenCode selon https://opencode.ai/docs/, vérifie opencode --version et démarre Ollama si modèle local.
+Dans l'interface, choisis le mode Automatique, configure les priorités par zone/tâche, clique Appliquer puis Enregistrer.
+Redémarre le serveur et actualise le navigateur après la mise à jour.
+
+Tests : python -m unittest discover -s tests -v
 **Statut : MVP local avec routage multi-moteur, Stickman et narration Piper TTS intégrée ; le premier test audio/vidéo de bout en bout reste à valider sur le PC Windows cible.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
