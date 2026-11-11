@@ -1,6 +1,6 @@
-# Production OS — MVP local V0.4
+# Production OS — MVP local V0.5
 
-**Statut : MVP local avec routage multi-moteur, Stickman et narration Piper TTS intégrée ; le premier test audio/vidéo de bout en bout reste à valider sur le PC Windows cible.**
+**Statut : MVP local avec Voice Studio (Piper, Qwen3-TTS et ElevenLabs sur autorisation explicite), Stickman et moteur multi-agent. Génération réelle non encore validée sur le PC utilisateur.**
 
 Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Research, Content Strategist, Creative, Video Production, Clipping, Publishing, Shopify Commerce, Customer Support, KDP Publishing, Analytics, Quality Control.
 
@@ -13,9 +13,9 @@ Production OS centralise quatre workflows pour les 12 rôles : Orchestrator, Res
 - **Research** : recherche très simple dans les notes locales `knowledge/` ; aucune recherche Internet réelle.
 - **Content Strategist** : génération de texte via la chaîne de moteurs configurée (Codex, Antigravity/Gemini, Ollama), avec gabarit déterministe honnêtement signalé si tous les moteurs sont indisponibles.
 - **Creative** : maquettes SVG originales, modifiables, non imprimables en l'état pour KDP.
-- **Video Production + Stickman + Piper** : le Content Strategist produit une section de voix off dédiée ; Piper génère un WAV local avec une voix fixe ; le worker Stickman reçoit ce WAV comme narration de référence, conserve les checkpoints, importe l'aperçu, attend l'approbation humaine et reprend le rendu final avec le même fichier audio. Aucun achat, crédit ou publication n'est déclenché.
+- **Video Production + Stickman + Voice Studio** : le Content Strategist produit une section de voix off dédiée ; Piper génère un WAV local avec une voix fixe ; le worker Stickman reçoit ce WAV comme narration de référence, conserve les checkpoints, importe l'aperçu, attend l'approbation humaine et reprend le rendu final avec le même fichier audio. Aucun achat, crédit ou publication n'est déclenché.
 
-- **Viral Storyboard** : scénario 35 s validé et sélectionnable pour Brain to Billions, avec JSON strict et indications de synchronisation ; voix ElevenLabs et rendu réel non connectés.
+- **Viral Storyboard** : scénario 35 s validé et sélectionnable pour Brain to Billions, avec déclencheurs visuels calculables à partir de vrais timestamps ElevenLabs (appel par autorisation explicite) ; montage final non vérifié.
 - **Clipping** : importe une vidéo dont les droits sont confirmés, découpe et exporte une vidéo verticale 540×960 avec FFmpeg, durée max de clip 120 s. Pas de détection virale ni transcription dans cette version.
 - **Publishing** : paquet de fichiers et manifeste de validation ; aucun upload ou post automatique.
 - **Shopify Commerce** : audit hors ligne sur `samples/clogz_catalog_demo.csv` (fichier fictif ; ne pas interpréter comme stock ou prix live).
@@ -55,6 +55,47 @@ ffprobe -version
 ```
 
 Aucun Docker, n8n ou autre service n'est obligatoire au lancement de ce MVP.
+
+### Voice Studio — voix masculines et pipeline de narration
+
+Le panneau **Voice Studio · Voix de podcast** permet de choisir le moteur vocal principal, d'enregistrer un profil masculin et de **tester/écouter** une voix depuis le navigateur. Le choix est enregistré pour les futures missions YouTube. Les missions déjà créées conservent le fournisseur enregistré dans leur configuration : on ne remplace jamais silencieusement une voix approuvée.
+
+| Fournisseur | Profil | Prérequis | Facturation |
+|---|---|---|---|
+| **Piper** | Pierre (`fr_FR-upmc-medium`, speaker 1) ou Siwis (ancienne voix) | Piper + modèle ONNX téléchargé | Aucun appel API |
+| **Qwen3-TTS local** | Uncle_Fu (grave), Ryan ou Aiden, modèle `0.6B-CustomVoice` | Python 3.12, modèle local, au moins 3,5 Go de RAM disponibles | Aucun appel API ; téléchargement initial |
+| **ElevenLabs** | Voix choisie par `voice_id` | `ELEVENLABS_API_KEY` dans le terminal du serveur, FFmpeg, ID de voix | **Chaque requête exige une autorisation explicite** et peut consommer des crédits |
+
+La version Qwen3-TTS 0.6B fournit des timbres masculins **préexistants** et ne permet pas encore la conception textuelle libre d'une nouvelle voix. Elle peut être lente sur CPU et son accent français doit être écouté avant utilisation. Pour VoiceDesign, un modèle 1.7B distinct serait nécessaire avec davantage de mémoire. Aucun téléchargement Qwen n'est déclenché par le simple affichage du dashboard.
+
+**Installer Qwen3-TTS sous Windows :**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_qwen_tts_windows.ps1
+```
+
+Le script installe un environnement séparé dans `%LOCALAPPDATA%\ProductionOS\QwenTTS\.venv` et PyTorch CPU. Le modèle `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` est téléchargé seulement lors de la première génération demandée. Pour ce PC Windows de 16 Go dont la RAM était déjà à 88 %, fermer les applications lourdes avant de lancer Qwen.
+
+**Installer la voix masculine Pierre sur Piper :**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_piper_windows.ps1 -Voice fr_FR-upmc-medium
+```
+
+Piper Pierre est une voix masculine française de repli local, pas une garantie de naturel comparable à une voix de podcast haut de gamme. Le modèle utilise le locuteur 1 (« Pierre »). Les données UPMC/Pierre sont indiquées sous CC BY-SA 4.0 ; conserver l'attribution lors de la publication.
+
+**Brancher ElevenLabs sans exposer la clé dans GitHub ou le navigateur :**
+
+```powershell
+$env:ELEVENLABS_API_KEY = "TA_CLE_A_GARDER_PRIVEE"
+python .\app.py
+```
+
+Puis renseigner l'identifiant réel de ta voix depuis le compte ElevenLabs dans Voice Studio et **Enregistrer la voix**. Une clé API est nécessaire et le solde/crédit éventuel dépend du compte. Le script ne retente **jamais automatiquement** une requête ElevenLabs après un échec réseau, pour éviter des décomptes multiples. Ne colle jamais de clé dans le chat ni dans `.env` suivi par Git.
+
+**Pour créer un Short avec le storyboard viral 35 s :** choisir **YouTube**, puis le scénario Brain to Billions. Production OS sélectionne ElevenLabs pour ses timestamps. Ouvrir la mission, cliquer **Générer la narration**, approuver explicitement **une** requête à crédits potentiels, puis écouter `narration.wav`. Production OS enregistre les vrais alignements de mots dans `word_timestamps.json` et les déclencheurs dans `visual_trigger_timestamps.json`, avec `lead_in_ms=-100`. Si la durée réelle diffère de plus de 2,5 secondes de la cible, le rendu est bloqué pour revue, pas synchronisé artificiellement.
+
+**Statut :** les adaptateurs et endpoints sont implémentés dans le dépôt ; la génération de voix réelle, le rendu Stickman et la synchronisation finale doivent encore être testés sur le PC Windows. Le montage et la publication ne démarrent jamais automatiquement après l'appel vocal.
 
 ### Installer Piper TTS (Windows)
 
