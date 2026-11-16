@@ -43,6 +43,15 @@ class MediaStudioTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 studio.submit(payload)
 
+    def test_shared_youtube_links_normalize(self):
+        expected = "https://www.youtube.com/watch?v=abcdefghijk"
+        self.assertEqual(studio.normalize_media_url(" https://youtu.be/abcdefghijk?si=example "), expected)
+        self.assertEqual(studio.normalize_media_url("https://m.youtube.com/shorts/abcdefghijk"), expected)
+        with self.assertRaises(ValueError):
+            studio.normalize_media_url("https://www.youtube.com/playlist?list=bad")
+        with self.assertRaises(ValueError):
+            studio.normalize_media_url("https://youtube.com.evil.org/watch?v=abcdefghijk")
+
     def test_single_task_and_persistent_qa(self):
         source = self.inbox / "0123456789.mp4"
         source.write_bytes(b"source")
