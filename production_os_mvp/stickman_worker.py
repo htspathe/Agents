@@ -8,6 +8,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 import threading
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -69,9 +71,26 @@ def _read_state(folder: Path) -> dict:
 def _write_state(folder: Path, data: dict) -> None:
     payload = dict(data)
     payload["updated"] = now()
-    temp = _state_path(folder).with_suffix(".tmp")
-    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temp, _state_path(folder))
+    # A unique sibling prevents dashboard and worker writers from sharing a temp file.
+    # On Windows even an ordinary concurrent reader can briefly block os.replace.
+    fd, name = tempfile.mkstemp(prefix=".stickman-worker-", suffix=".tmp", dir=folder)
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as target:
+            target.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        for attempt in range(8):
+            try:
+                os.replace(temp, _state_path(folder))
+                return
+            except PermissionError:
+                if attempt == 7:
+                    raise
+                time.sleep(min(0.05 * 2 ** attempt, 0.5))
+    finally:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _pid_alive(pid) -> bool:
@@ -110,6 +129,27 @@ def get_status(job_id: str) -> dict:
     if state in ACTIVE_STATES and data.get("pid") and not _pid_alive(data.get("pid")):
         state = "interrupted"
         data["message"] = "Le processus local ne répond plus. Tu peux relancer l'agent depuis cette mission."
+    # SQLite is authoritative for a completed import. A failed metadata write
+    # must not represent an already imported and reviewable artifact as failed.
+    if state not in ACTIVE_STATES:
+        job = engine.get_job(job_id)
+        review = {
+            "awaiting_preview_approval": ("waiting_preview_approval", "stickman_preview.mp4",
+                                         "Aperçu importé ; validation humaine requise."),
+            "awaiting_approval": ("waiting_final_review", "stickman_final.mp4",
+                                  "Rendu final importé ; revue humaine requise.")
+        }.get(job["status"] if job else None)
+        if review:
+            expected, filename, message = review
+            video = folder / filename
+            try:
+                present = not video.is_symlink() and video.is_file() and video.stat().st_size > 0
+            except OSError:
+                present = False
+            if present and state != expected:
+                data["state_warning"] = data.get("message", "")
+                data["message"] = message
+                state = expected
     data["state"] = state
     data["log_tail"] = _tail(_log_path(folder))
     return data
