@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import engine
 import engine_manager
 import comfyui_bridge
+import media_studio
 import smart_router
 import quota_monitor
 import resource_manager
@@ -73,6 +74,24 @@ class Handler(BaseHTTPRequestHandler):
         # Do not allow read APIs without session token.
         if not self.authorized():
             self.respond(403, {"error": "Jeton de session local manquant"})
+            return
+        if path == "/api/media/status":
+            return self.respond(200, media_studio.status())
+        match = re.fullmatch(r"/api/media/files/([0-9a-f]{12})/([^/]+)", path)
+        if match:
+            try:
+                file = media_studio.result_file(match.group(1), unquote(match.group(2)))
+            except (OSError, ValueError):
+                return self.respond(404, {"error": "Livrable indisponible"})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(file.stat().st_size))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Disposition", "attachment")
+            self.end_headers()
+            with file.open("rb") as handle:
+                shutil.copyfileobj(handle, self.wfile, 256*1024)
             return
         if path == "/api/piper/test-audio":
             audio_path = piper_tts.test_audio_path()
@@ -199,6 +218,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/media/tasks":
+            if length > 8000:
+                return self.respond(413, {"error": "Requête média trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                return self.respond(202, media_studio.submit(data))
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:350]})
         if path == "/api/voices/settings":
             if length > 4000:
                 return self.respond(413, {"error": "Configuration vocale trop volumineuse"})
