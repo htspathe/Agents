@@ -21,17 +21,30 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+class ClosingConnection(sqlite3.Connection):
+    """Commit or roll back at context exit, and release Windows file handles."""
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect():
-    cn = sqlite3.connect(DB, timeout=15)
-    cn.row_factory = sqlite3.Row
-    cn.execute("PRAGMA journal_mode=WAL")
-    return cn
+    cn = sqlite3.connect(DB, timeout=15, factory=ClosingConnection)
+    try:
+        cn.row_factory = sqlite3.Row
+        return cn
+    except BaseException:
+        cn.close()
+        raise
 
 
 def init():
     (ROOT / "outputs").mkdir(exist_ok=True)
     (ROOT / "inbox").mkdir(exist_ok=True)
     with connect() as db:
+        db.execute("PRAGMA journal_mode=WAL")
         db.executescript("""
         CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, workflow TEXT NOT NULL,
           brief TEXT NOT NULL, input_json TEXT NOT NULL, status TEXT NOT NULL,
