@@ -645,7 +645,20 @@ def quality(ctx, folder):
             issues.append("Passerelle Stickman absente")
     if ctx["workflow"] == "clogz":
         issues.append("Prix, stocks et conditions commerciales réelles non vérifiés")
-    report = {"passed_technical_checks": not any("absent" in x or "absente" in x for x in issues),
+    # Verify actual media bytes, in addition to the existing artifact presence checks.
+    import media_stack
+    media_reports = {}
+    if ctx["workflow"] in {"clipping", "youtube"}:
+        for name in ("short_vertical.mp4", "stickman_final.mp4"):
+            if name in files:
+                verification = media_stack.video_qa(folder / name)
+                media_reports[name] = verification
+                if not verification["technical_pass"]:
+                    issues.append("Échec technique vidéo : " + name)
+    report = {"media_checks": media_reports,
+              "editorial_target": 18,
+              "editorial_score": None,
+              "passed_technical_checks": all(r["technical_pass"] for r in media_reports.values()) and not any("absent" in x or "absente" in x for x in issues),
               "publication_ready": False, "pending_human_checks": issues,
               "files": sorted(files), "external_actions": "NONE"}
     write_json(folder, "qa_report.json", report)
