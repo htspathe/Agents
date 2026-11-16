@@ -22,6 +22,7 @@ import engine
 import engine_manager
 import comfyui_bridge
 import media_studio
+import test_center
 import smart_router
 import quota_monitor
 import resource_manager
@@ -75,6 +76,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized():
             self.respond(403, {"error": "Jeton de session local manquant"})
             return
+        if path == "/api/test-center":
+            return self.respond(200, test_center.status())
         if path == "/api/media/status":
             return self.respond(200, media_studio.status())
         match = re.fullmatch(r"/api/media/files/([0-9a-f]{12})/([^/]+)", path)
@@ -218,6 +221,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/test-center/run":
+            if length > 1000:
+                return self.respond(413, {"error": "Requête de test trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                return self.respond(202, test_center.submit(data.get("domain")))
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:350]})
         if path == "/api/media/tasks":
             if length > 8000:
                 return self.respond(413, {"error": "Requête média trop volumineuse"})
