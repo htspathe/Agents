@@ -50,7 +50,44 @@ def source_file(name):
 
 def configured_path(key):
     value = os.environ.get(key, "").strip()
-    return Path(value).expanduser().resolve() if value else None
+    if value:
+        return Path(value).expanduser().resolve()
+    # Stable local paths: setup survives a new PowerShell window.
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    root = Path(local) / "ProductionOS"
+    defaults = {
+        "PRODUCTION_WHISPER_PYTHON": root / "Whisper" / ".venv" / "Scripts" / "python.exe",
+        "PRODUCTION_WHISPER_MODEL": root / "Whisper" / "models" / "small",
+        "PRODUCTION_HYPERFRAMES_PROJECT": root / "HyperFrames" / "btb-hyperframes",
+    }
+    default = defaults.get(key)
+    return default.resolve() if default and default.exists() else None
+
+
+def normalize_media_url(url):
+    from urllib.parse import urlsplit, parse_qs
+    if not isinstance(url, str) or len(url) > 1000:
+        raise ValueError("URL invalide")
+    url = url.strip()
+    parts = urlsplit(url)
+    allowed = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com"}
+    if parts.scheme != "https" or parts.hostname not in allowed or parts.username or parts.password or parts.port not in (None, 443):
+        raise ValueError("URL HTTPS YouTube/Vimeo prise en charge ; autre source via CLI")
+    if parts.hostname in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
+        if parts.hostname == "youtu.be":
+            video_id = parts.path.strip("/")
+        elif parts.path == "/watch":
+            video_id = parse_qs(parts.query).get("v", [""])[0]
+        elif parts.path.startswith(("/shorts/", "/live/")):
+            video_id = parts.path.strip("/").split("/", 1)[1]
+        else:
+            raise ValueError("Utilise le lien direct d'une vidéo YouTube, pas une chaîne ou playlist")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+            raise ValueError("Identifiant vidéo YouTube invalide")
+        return "https://www.youtube.com/watch?v=" + video_id
+    return url
 
 def whisper_python():
     configured = configured_path("PRODUCTION_WHISPER_PYTHON")
@@ -66,7 +103,7 @@ def status():
     tool = media_stack.doctor()
     return {"tools": tool, "comfyui": comfyui_bridge.get_status(),
             "whisper_model_configured": bool(model and model.is_dir()),
-            "whisper_separate_python": bool(os.environ.get("PRODUCTION_WHISPER_PYTHON")),
+            "whisper_separate_python": bool((configured_path("PRODUCTION_WHISPER_PYTHON")) and configured_path("PRODUCTION_WHISPER_PYTHON").is_file()),
             "hyperframes_project_configured": bool(project and (project / "index.html").is_file()
                                                     and (project / "node_modules/hyperframes/package.json").is_file()),
             "target": 18, "score": None, "publication_automatic": False,
@@ -136,16 +173,9 @@ def submit(data):
         payload["full_hd"] = data.get("full_hd") is True
         payload["any_ratio"] = data.get("any_ratio") is True
     elif action == "acquire":
-        from urllib.parse import urlsplit
-        url = data.get("url", "")
-        if not isinstance(url, str) or len(url) > 1000 or data.get("rights_confirmed") is not True:
-            raise ValueError("URL et confirmation explicite des droits requises")
-        parts = urlsplit(url)
-        # Restrict the dashboard to supported public source sites; CLI accepts other authorized sources.
-        allowed = {"youtube.com", "www.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com"}
-        if parts.scheme != "https" or parts.hostname not in allowed or parts.username or parts.password or parts.port not in (None, 443):
-            raise ValueError("URL HTTPS YouTube/Vimeo prise en charge ; autre source via CLI")
-        payload["url"] = url
+        if data.get("rights_confirmed") is not True:
+            raise ValueError("Confirmation explicite des droits requise")
+        payload["url"] = normalize_media_url(data.get("url", ""))
         payload["rights_confirmed"] = True
     elif action == "render":
         project = configured_path("PRODUCTION_HYPERFRAMES_PROJECT")
