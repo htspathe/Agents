@@ -34,6 +34,7 @@ MAX_REFERENCE_BYTES = 12 * 1024 * 1024
 MAX_VIDEO_BYTES = 200 * 1024 * 1024
 ALLOWED_RATIOS = {"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+KNOWN_PAID_AGNES_MODELS = {"agnes-video-2.5"}
 _LOCK = threading.RLock()
 _WORKER = None
 _STOP = threading.Event()
@@ -127,7 +128,7 @@ def _free_model_policy(provider: str) -> tuple[list[str], bool]:
             models.remove("auto")
         return models, bool(models)
     if provider == "agnes":
-        models = _csv_env("AGNES_FREE_VIDEO_MODELS")
+        models = [model for model in _csv_env("AGNES_FREE_VIDEO_MODELS") if model not in KNOWN_PAID_AGNES_MODELS]
         confirmed = os.environ.get("AGNES_VIDEO_FREE_CONFIRMED") == "1"
         return models if confirmed else [], confirmed and bool(models)
     return [], False
