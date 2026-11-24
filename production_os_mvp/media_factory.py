@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -232,8 +233,21 @@ def _connect():
     return connection
 
 
+@contextmanager
+def _db():
+    connection = _connect()
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def init():
-    with _connect() as db:
+    with _db() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS media_jobs (
                 id TEXT PRIMARY KEY,
@@ -346,7 +360,7 @@ def create_jobs(data: dict, count: int = 1) -> list[dict]:
         raise ValueError("Le nombre de variantes doit être compris entre 1 et 10.")
     init()
     jobs = []
-    with _connect() as db:
+    with _db() as db:
         for _ in range(count):
             job_id = uuid.uuid4().hex[:12]
             db.execute(
@@ -424,7 +438,8 @@ def _write_mp4_response(request: Request, target: Path, timeout: int) -> dict:
                     if total > MAX_VIDEO_BYTES:
                         raise RuntimeError("Vidéo supérieure à 200 Mo.")
                     output.write(chunk)
-            header = temporary.read_bytes()[:32]
+            with temporary.open("rb") as video_file:
+                header = video_file.read(32)
             if total < 1024 or b"ftyp" not in header[:16]:
                 raise RuntimeError("Réponse vidéo invalide : signature MP4 absente.")
             os.replace(temporary, target)
@@ -677,14 +692,22 @@ def output_path(job_id: str) -> Path | None:
 
 
 def retry_job(job_id: str) -> dict:
-    job = get_job(job_id)
+    if not re.fullmatch(r"[0-9a-f]{12}", str(job_id or "")):
+        raise ValueError("Identifiant de mission invalide.")
+    init()
+    with _db() as db:
+        row = db.execute("SELECT * FROM media_jobs WHERE id=?", (job_id,)).fetchone()
+    job = dict(row) if row else None
     if not job or job.get("status") not in {"failed", "interrupted"}:
         raise ValueError("Seules les générations échouées ou interrompues peuvent être relancées.")
-    return create_jobs({
+    data = {
         "provider": job["provider"], "model": job["model"],
         "prompt": job["prompt"], "duration": job["duration"],
         "aspect_ratio": job["aspect_ratio"],
-    } | ({"image_id": job.get("image_id")} if job.get("image_id") else {}), 1)[0]
+    }
+    if job.get("image_id"):
+        data["image_id"] = job["image_id"]
+    return create_jobs(data, 1)[0]
 
 
 def get_status(refresh: bool = False) -> dict:
