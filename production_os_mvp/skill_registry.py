@@ -6,6 +6,7 @@ an agent prompt as bounded guidance; skills never grant tool or billing permissi
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import threading
 import time
@@ -111,10 +112,12 @@ def _parse_skill(path: Path, runtime: str) -> dict | None:
         return None
     name = path.parent.name
     description = ""
+    body = raw
     if raw.startswith("---"):
         parts = raw.split("---", 2)
         if len(parts) >= 3:
             frontmatter = parts[1]
+            body = parts[2]
             lines = frontmatter.splitlines()
             collecting = False
             desc_lines = []
@@ -135,7 +138,7 @@ def _parse_skill(path: Path, runtime: str) -> dict | None:
                         desc_lines.append(line.strip())
             description = " ".join(desc_lines).strip()[:900]
     if not description:
-        for line in raw.splitlines():
+        for line in body.splitlines():
             clean = line.strip()
             if clean and not clean.startswith("#") and clean != "---":
                 description = clean[:500]
@@ -188,12 +191,21 @@ def scan_skills(roots=None) -> dict:
     }
 
 
+def _configured_roots():
+    roots = list(SKILL_ROOTS)
+    extra = os.environ.get("PRODUCTION_SKILL_DIRS", "")
+    for value in extra.split(os.pathsep):
+        if value.strip():
+            roots.append(Path(value.strip()).expanduser())
+    return tuple(roots)
+
+
 def get_status(refresh=False) -> dict:
     global _CACHE, _CACHE_AT
     with _LOCK:
         if not refresh and _CACHE is not None and time.monotonic() - _CACHE_AT < CACHE_SECONDS:
             return _CACHE
-    result = scan_skills()
+    result = scan_skills(_configured_roots())
     result["updated_unix"] = int(time.time())
     with _LOCK:
         _CACHE, _CACHE_AT = result, time.monotonic()
