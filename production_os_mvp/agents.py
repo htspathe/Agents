@@ -66,7 +66,13 @@ def safe_text(value, maxlen=180):
 
 
 def llm(prompt: str, fallback: str, ctx: dict) -> str:
-    """Generate text through the configured provider chain; keep deterministic fallback honest."""
+    """Generate text through the configured provider chain with selected local skill guidance."""
+    guidance = str(ctx.get("active_skill_instructions") or "").strip()
+    if guidance:
+        prompt = prompt[:9000] + "\n\n" + guidance[:10000]
+        names = [str(item.get("name")) for item in ctx.get("active_skills", []) if isinstance(item, dict) and item.get("name")]
+        if names:
+            ctx.setdefault("notes", []).append("Compétences locales appliquées comme références : " + ", ".join(names[:6]))
     return engine_manager.generate_text(prompt, fallback, ctx)
 
 
