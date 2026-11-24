@@ -27,6 +27,10 @@ import resource_manager
 import piper_tts
 import voice_studio
 import stickman_worker
+import agent_orchestrator
+import mcp_registry
+import runtime_registry
+import skill_registry
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
@@ -106,7 +110,27 @@ class Handler(BaseHTTPRequestHandler):
                                "piper": piper_tts.get_status(),
                                "piper_settings": piper_tts.get_settings(),
                                "voice_studio": voice_studio.status(),
-                               "voice_studio_settings": voice_studio.get_settings()})
+                               "voice_studio_settings": voice_studio.get_settings(),
+                               "agent_runtimes": runtime_registry.get_status(),
+                               "skills_registry": skill_registry.get_status(),
+                               "mcp_registry": mcp_registry.get_status()})
+            return
+        if path == "/api/agents/registry":
+            self.respond(200, {
+                "runtimes": runtime_registry.get_status(refresh=True),
+                "skills": skill_registry.get_status(refresh=True),
+                "mcp": mcp_registry.get_status(refresh=True),
+                "logical_agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
+            })
+            return
+        if path == "/api/agents/plan":
+            params = parse_qs(urlsplit(self.path).query)
+            workflow = params.get("workflow", [""])[0][:40]
+            brief = params.get("brief", [""])[0][:1200]
+            try:
+                self.respond(200, agent_orchestrator.build_plan(workflow, brief))
+            except ValueError as exc:
+                self.respond(400, {"error": str(exc)[:250]})
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
