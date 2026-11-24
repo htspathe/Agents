@@ -210,6 +210,7 @@ def provider_status(refresh: bool = False) -> dict:
         "configured_models": agnes_models,
         "api_key_configured": bool(os.environ.get("AGNES_API_KEY")),
         "identity_verified": False,
+        "catalog_models": [],
         "ready": False,
         "free_confirmed": agnes_confirmed,
         "note": "Agnes est bloqué par défaut. Il faut une clé et une confirmation explicite de gratuité par modèle.",
@@ -222,12 +223,15 @@ def provider_status(refresh: bool = False) -> dict:
             rows = payload.get("data", []) if isinstance(payload, dict) else []
             if isinstance(rows, list):
                 agnes["identity_verified"] = True
-                agnes["ready"] = bool(agnes_models and agnes_confirmed)
-                agnes["note"] = (
-                    "API Agnes identifiée et allowlist locale confirmée."
-                    if agnes["ready"] else
-                    "API identifiée, mais aucun modèle Agnes n'est autorisé en mode gratuit."
-                )
+                agnes["catalog_models"] = [str(row.get("id")) for row in rows if isinstance(row, dict) and row.get("id")]
+                catalog_match = all(model in agnes["catalog_models"] for model in agnes_models)
+                agnes["ready"] = bool(agnes_models and agnes_confirmed and catalog_match)
+                if not agnes_models or not agnes_confirmed:
+                    agnes["note"] = "API identifiée, mais aucun modèle Agnes n'est autorisé en mode gratuit."
+                elif not catalog_match:
+                    agnes["note"] = "Un ou plusieurs modèles de l'allowlist ne figurent pas dans le catalogue Agnes."
+                else:
+                    agnes["note"] = "API Agnes identifiée ; les modèles autorisés sont présents dans le catalogue et confirmés localement gratuits."
         elif agnes_models:
             agnes["note"] = "Allowlist présente, mais AGNES_API_KEY est absent."
     except HTTPError as exc:
