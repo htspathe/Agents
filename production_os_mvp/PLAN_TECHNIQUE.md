@@ -172,6 +172,7 @@ Une fois que le dashboard et un vrai clip de démonstration tournent, la prochai
 - FreeLLMAPI : seuls les modèles de FREELLMAPI_FREE_VIDEO_MODELS sont autorisés. Le modèle auto nécessite FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
 - Agnes : seuls les modèles de AGNES_FREE_VIDEO_MODELS sont autorisés si AGNES_VIDEO_FREE_CONFIRMED=1.
 - L'allowlist est une attestation locale de l'opérateur, pas une vérification de facturation par le code. Un modèle absent de l'allowlist est bloqué.
+- Agnes Video 2.5 (modèle de base) est bloqué en Free Only car le tarif publié est payant ; Agnes Video 2.5 Flash n'est qu'une promotion temporaire à 0 $/s selon le catalogue public et doit être revalidé dans la console avant activation.
 - Les clés sont chargées depuis l'environnement ou .env.local ; aucune clé n'est retournée par l'API ou écrite dans les manifests.
 - Si un job est en cours lors d'un arrêt, il devient interrupted et nécessite une relance manuelle pour éviter une double génération ou une double facturation.
 
