@@ -123,6 +123,50 @@ class MediaFactoryTests(unittest.TestCase):
         self.assertEqual(result["model"], "video-test-model")
         self.assertGreater(result["bytes"], 1024)
 
+    def test_agnes_uses_reference_mode_and_polls_video_id(self):
+        class FakeResponse:
+            def __init__(self, payload=None, headers=None, binary=None):
+                self.headers = headers or {"Content-Type": "application/json"}
+                self.data = json.dumps(payload).encode("utf-8") if payload is not None else (binary or b"")
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, size=-1):
+                if size < 0:
+                    size = len(self.data)
+                chunk, self.data = self.data[:size], self.data[size:]
+                return chunk
+
+        mp4 = b"\x00\x00\x00\x18ftypisom" + (b"\x00" * 1400)
+        responses = [
+            FakeResponse({"video_id": "video-123"}),
+            FakeResponse({"status": "completed", "url": "https://cdn.example.com/video.mp4"}),
+            FakeResponse(headers={"Content-Type": "video/mp4"}, binary=mp4),
+        ]
+        requests = []
+        def fake_urlopen(request, **kwargs):
+            requests.append(request)
+            return responses.pop(0)
+        job = {
+            "id": "0123456789ab", "model": "agnes-video-2.5-flash",
+            "prompt": "Animate the portrait naturally", "duration": 6,
+            "aspect_ratio": "9:16", "image_id": "0123456789abcdef",
+        }
+        target = self.root / "agnes.mp4"
+        with patch.dict(os.environ, {"AGNES_API_KEY": "secret-agnes"}, clear=False), \
+             patch.object(media_factory, "_agnes_base", return_value="https://apihub.agnes-ai.com"), \
+             patch.object(media_factory, "_image_data_url", return_value="data:image/png;base64,AAAA"), \
+             patch.object(media_factory, "urlopen", side_effect=fake_urlopen), \
+             patch.object(media_factory.time, "sleep", return_value=None):
+            result = media_factory._run_agnes(job, target)
+        create_payload = json.loads(requests[0].data.decode("utf-8"))
+        self.assertEqual(create_payload["mode"], "reference")
+        self.assertEqual(create_payload["seconds"], "6")
+        self.assertEqual(create_payload["images"], ["data:image/png;base64,AAAA"])
+        self.assertEqual(result["video_id"], "video-123")
+        self.assertTrue(target.is_file())
+
     def test_provider_status_never_returns_api_key(self):
         with patch.dict(os.environ, {
             "FREELLMAPI_API_KEY": "super-secret-key",
