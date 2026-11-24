@@ -75,11 +75,20 @@ def _candidates(env_name: str, names: tuple[str, ...]) -> list[str]:
         stem = name.lower().replace(".cmd", "").replace(".exe", "")
         for path in common.get(stem, []):
             values.append(str(path))
+    program_files = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files"))
+    local_programs = local / "Programs"
+    if any(name.lower().startswith("blender") for name in names):
+        for base in (program_files / "Blender Foundation", local_programs / "Blender Foundation"):
+            try:
+                values.extend(str(path) for path in base.glob("Blender*\\blender.exe"))
+            except OSError:
+                pass
     return list(dict.fromkeys(values))
 
 
 def _find(env_name: str, names: tuple[str, ...]) -> str | None:
     for candidate in _candidates(env_name, names):
+        candidate = candidate.strip().strip('"')
         resolved = shutil.which(candidate) or candidate
         try:
             path = Path(resolved).expanduser()
@@ -121,7 +130,10 @@ def _tool_status():
         ollama_path = _find("OLLAMA_BIN", ("ollama", "ollama.exe"))
     tools["ollama"] = {"installed": bool(ollama_path), "path": ollama_path}
     whisper_cli = shutil.which("whisper")
-    whisper_module = importlib.util.find_spec("whisper") is not None
+    try:
+        whisper_module = importlib.util.find_spec("whisper") is not None
+    except (ImportError, ValueError):
+        whisper_module = False
     tools["whisper"] = {
         "installed": bool(whisper_cli or whisper_module),
         "path": whisper_cli,
