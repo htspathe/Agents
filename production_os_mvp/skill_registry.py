@@ -51,6 +51,11 @@ ROLE_SKILL_HINTS = {
     "blender": ("hub-blender-artist",),
     "roblox": ("hub-roblox-developer", "roblox-rojo-qa"),
     "devsecops": ("hub-cyber-devsecops",),
+    "voice": ("hub-voice-studio",),
+    "opportunity": ("hub-opportunity-hunter", "opportunity-hunter-workflow"),
+    "gui": ("hub-gui-designer", "logo-design", "ui-ux-pro-max", "web-design-guidelines"),
+    "file": ("hub-file-agent",),
+    "youtube": ("hub-youtube-automation", "hub-video-production", "directing-stickman-videos"),
 }
 
 _STOPWORDS = {
