@@ -384,7 +384,7 @@ _WAKE = threading.Event()
 
 def _claim_next():
     init()
-    with _connect() as db:
+    with _db() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT * FROM media_jobs WHERE status='queued' ORDER BY created_at,rowid LIMIT 1").fetchone()
         if not row:
@@ -402,7 +402,7 @@ def _update_job(job_id: str, **fields):
         return
     assignments = ", ".join(key + " = ?" for key in fields)
     values = list(fields.values()) + [job_id]
-    with _connect() as db:
+    with _db() as db:
         db.execute(
             "UPDATE media_jobs SET " + assignments + ", updated_at=CURRENT_TIMESTAMP WHERE id=?",
             values,
@@ -631,7 +631,7 @@ def start_worker():
     with _LOCK:
         if _WORKER and _WORKER.is_alive():
             return
-        with _connect() as db:
+        with _db() as db:
             db.execute(
                 "UPDATE media_jobs SET status='interrupted',error='Production OS s’est arrêté pendant cette génération ; relance manuelle requise pour éviter un doublon.',updated_at=CURRENT_TIMESTAMP WHERE status='running'"
             )
@@ -652,7 +652,7 @@ def stop_worker(timeout: float = 3.0):
 def list_jobs(limit: int = 30) -> list[dict]:
     init()
     limit = max(1, min(int(limit), 100))
-    with _connect() as db:
+    with _db() as db:
         rows = db.execute(
             "SELECT * FROM media_jobs ORDER BY created_at DESC,rowid DESC LIMIT ?", (limit,)
         ).fetchall()
@@ -673,7 +673,7 @@ def get_job(job_id: str) -> dict | None:
     if not re.fullmatch(r"[0-9a-f]{12}", str(job_id or "")):
         return None
     init()
-    with _connect() as db:
+    with _db() as db:
         row = db.execute("SELECT * FROM media_jobs WHERE id=?", (job_id,)).fetchone()
     return _public_job(row) if row else None
 
