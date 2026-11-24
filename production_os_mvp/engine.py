@@ -181,7 +181,7 @@ def run_job(job_id: str) -> None:
                 ],
             }
             (folder / "agent_skill_plan.json").write_text(
-                json.dumps(skill_manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+                json.dumps(skill_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
             )
             selected_count = sum(len(items) for items in skill_assignments.values())
             ctx["notes"].append(
