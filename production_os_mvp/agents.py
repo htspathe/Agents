@@ -233,7 +233,8 @@ def video(ctx, folder):
             "channel": channel, "topic": ctx["brief"],
             "revision_of": ctx.get("revision_of") or None,
             "correction_request": ctx.get("correction_request") or None,
-            "publication": "DISABLED"
+            "publication": "DISABLED",
+            "selected_skills": [str(item.get("name")) for item in ctx.get("active_skills", []) if isinstance(item, dict) and item.get("name")],
         }
         write_json(folder, "stickman_job.json", config)
 
@@ -398,6 +399,9 @@ Utilise le Skill installé directing-stickman-videos et respecte son SKILL.md ai
    Le worker parent Production OS importe automatiquement les deux fichiers après la fin de ton processus et passe la mission à "À valider".
    Ne publie rien sur YouTube.
 8. Si Production OS affiche "Corrections demandées" ou "Rejetée", arrête cette ancienne mission. Pour une correction, reprends uniquement la nouvelle mission créée par Production OS.
+
+## Skills additionnels sélectionnés automatiquement
+{ctx.get("active_skill_instructions") or "Aucun skill additionnel sélectionné pour cette mission."}
 
 ## Fichiers de départ
 - Script/contenu : content.md
