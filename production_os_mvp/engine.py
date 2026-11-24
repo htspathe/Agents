@@ -155,9 +155,49 @@ def run_job(job_id: str) -> None:
         start_agent = ctx.get("start_agent", "orchestrator")
         if start_agent != "orchestrator":
             steps = steps[steps.index(start_agent):]
+
+        # Discover installed local skills and assign only relevant guidance to each role.
+        # Skill files are never executed; their text is bounded and treated as untrusted guidance.
+        skill_assignments = {}
+        skill_registry_module = None
+        try:
+            import skill_registry as skill_registry_module
+            discovered_skills = skill_registry_module.get_status().get("skills", [])
+            for agent_id in steps:
+                skill_assignments[agent_id] = skill_registry_module.select_for_agent(
+                    agent_id, ctx.get("brief", ""), limit=3, skills=discovered_skills
+                )
+            skill_manifest = {
+                "workflow": job["workflow"],
+                "automatic_selection": True,
+                "skills_are_executed": False,
+                "steps": [
+                    {"agent_id": agent_id, "skills": [
+                        {"name": item["name"], "description": item.get("description", ""),
+                         "matched_by": item.get("matched_by"), "score": item.get("score")}
+                        for item in skill_assignments.get(agent_id, [])
+                    ]}
+                    for agent_id in steps
+                ],
+            }
+            (folder / "agent_skill_plan.json").write_text(
+                json.dumps(skill_manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+            )
+            selected_count = sum(len(items) for items in skill_assignments.values())
+            ctx["notes"].append(
+                f"Skills locaux détectés et routés automatiquement : {selected_count} affectations sur {len(steps)} rôles."
+            )
+        except Exception as skill_error:
+            ctx["notes"].append("Inventaire des skills indisponible ; workflow natif conservé (" + type(skill_error).__name__ + ").")
+
         for agent in steps:
             ctx["active_agent"] = agent
-            add_event(job_id, agent, "running", "Exécution")
+            ctx["active_skills"] = skill_assignments.get(agent, [])
+            ctx["active_skill_instructions"] = (
+                skill_registry_module.load_skill_instructions(ctx["active_skills"])
+                if skill_registry_module and ctx["active_skills"] else ""
+            )
+            add_event(job_id, agent, "running", "Exécution" + (f" · {len(ctx['active_skills'])} skill(s)" if ctx["active_skills"] else ""))
             artifact = HANDLERS[agent](ctx, folder)
             add_event(job_id, agent, "done", f"Livrable : {artifact}")
         (folder / "run_notes.json").write_text(json.dumps(ctx["notes"], ensure_ascii=False, indent=2), encoding="utf-8")
