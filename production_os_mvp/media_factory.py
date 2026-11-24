@@ -608,6 +608,15 @@ def _validate_mp4(path: Path) -> dict:
     }
 
 
+def _safe_error(value: object) -> str:
+    message = str(value or type(value).__name__)
+    for secret_name in ("FREELLMAPI_API_KEY", "AGNES_API_KEY"):
+        secret = os.environ.get(secret_name, "").strip()
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    return message[:1200]
+
+
 def _process_job(job: dict):
     job_id = job["id"]
     target = OUTPUT_DIR / (job_id + ".mp4")
@@ -629,7 +638,7 @@ def _process_job(job: dict):
         )
     except Exception as exc:
         target.unlink(missing_ok=True)
-        _update_job(job_id, status="failed", error=(str(exc) or type(exc).__name__)[:1200])
+        _update_job(job_id, status="failed", error=_safe_error(exc))
 
 
 def _worker_loop():
