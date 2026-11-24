@@ -75,12 +75,12 @@ def _candidates(env_name: str, names: tuple[str, ...]) -> list[str]:
         stem = name.lower().replace(".cmd", "").replace(".exe", "")
         for path in common.get(stem, []):
             values.append(str(path))
-    program_files = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files"))
+    program_files = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
     local_programs = local / "Programs"
     if any(name.lower().startswith("blender") for name in names):
         for base in (program_files / "Blender Foundation", local_programs / "Blender Foundation"):
             try:
-                values.extend(str(path) for path in base.glob("Blender*\\blender.exe"))
+                values.extend(str(folder / "blender.exe") for folder in base.glob("Blender*") if (folder / "blender.exe").is_file())
             except OSError:
                 pass
     return list(dict.fromkeys(values))
