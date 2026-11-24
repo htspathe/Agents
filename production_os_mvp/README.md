@@ -395,6 +395,7 @@ Les tests couvrent le registre des skills, la déduplication, la sélection par 
 - Agnes AI utilise la création POST /v1/videos, puis le polling /agnesapi et le téléchargement HTTPS du résultat.
 - Le Cost Guardian est fail-closed : aucun modèle n'est autorisé par défaut. Un modèle doit être inscrit dans FREELLMAPI_FREE_VIDEO_MODELS ou AGNES_FREE_VIDEO_MODELS ; Agnes exige aussi AGNES_VIDEO_FREE_CONFIRMED=1. Le modèle auto FreeLLMAPI exige FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
 - Ces allowlists sont une confirmation locale de l'opérateur, pas une preuve indépendante de gratuité. Vérifier les tarifs, quotas et conditions du modèle dans le compte fournisseur avant de l'inscrire.
+- Agnes Video 2.5 (modèle de base) est bloqué en Free Only car le tarif publié est payant ; Agnes Video 2.5 Flash n'est qu'une promotion temporaire à 0 $/s selon le catalogue public et doit être revalidé dans la console avant activation.
 - Les secrets sont lus depuis l'environnement ou production_os_mvp/.env.local. Ce fichier est ignoré par Git ; ne jamais le partager ou le committer. Un modèle non autorisé, une API non authentifiée ou un endpoint non identifié bloque la génération.
 - Aucun fallback entre fournisseurs vidéo, aucune relance automatique après interruption, aucune publication et aucune dépense implicite.
 - Une image de référence PNG/JPG/WebP peut être téléversée (12 Mo max). La compatibilité image-to-video dépend du modèle et du fournisseur.
