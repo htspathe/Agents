@@ -24,6 +24,7 @@ CACHE_SECONDS = 20
 AGENT_SPECS = {
     "codex": {"label": "Codex CLI", "env": "PRODUCTION_CODEX_BIN", "names": ("codex", "codex.cmd"), "adapter": "text-router"},
     "opencode": {"label": "OpenCode", "env": "PRODUCTION_OPENCODE_BIN", "names": ("opencode", "opencode.cmd", "opencode.exe"), "adapter": "text-router"},
+    "antigravity": {"label": "Antigravity / Gemini", "env": "ANTIGRAVITY_CLI_BIN", "names": ("agy", "agy.exe"), "adapter": "text-router"},
     "dsh": {"label": "DeepSeek Harness", "env": "PRODUCTION_DSH_BIN", "names": ("dsh", "dsh.cmd"), "adapter": "discovery-only"},
     "pi": {"label": "Pi Agent", "env": "PRODUCTION_PI_BIN", "names": ("pi", "pi.cmd"), "adapter": "discovery-only"},
     "claude": {"label": "Claude Code", "env": "PRODUCTION_CLAUDE_BIN", "names": ("claude", "claude.cmd"), "adapter": "discovery-only"},
