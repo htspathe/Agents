@@ -376,7 +376,7 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 - À chaque mission, `engine.py` génère `agent_skill_plan.json` dans le dossier de sortie. Les instructions des skills sélectionnés sont limitées en taille, utilisées comme références et transmises au générateur de contenu et au handoff Stickman. Aucun fichier SKILL.md n'est exécuté.
 - Le dashboard « Agents & Skills » affiche les runtimes, les outils, les serveurs MCP configurés, les skills dédupliqués et un aperçu du plan multi-agents.
 - Endpoints authentifiés : `GET /api/agents/registry` actualise l'inventaire ; `GET /api/agents/plan?workflow=youtube&brief=...` prévisualise une mission sans la lancer.
-- Codex et OpenCode réutilisent leurs adaptateurs de texte existants. Pi, Claude, DSH et les wrappers FCC sont détectés mais restent en « adaptateur à intégrer » tant que leur contrat CLI et leurs protections d'exécution n'ont pas été testés.
+- Codex, Antigravity et OpenCode réutilisent leurs adaptateurs de texte existants ; Ollama reste le moteur local. Pi, Claude, DSH et les wrappers FCC sont détectés mais restent en « adaptateur à intégrer » tant que leur contrat CLI et leurs protections d'exécution n'ont pas été testés.
 - Budget zéro par défaut, aucun lancement de CLI externe par l'inventaire, aucune publication automatique et aucune autorisation de dépense implicite.
 
 ### Tests ciblés V0.7
