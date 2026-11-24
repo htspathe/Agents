@@ -5,6 +5,12 @@ import agent_orchestrator
 
 
 class AgentOrchestratorTests(unittest.TestCase):
+    def test_specialist_is_suggested_but_never_dispatched(self):
+        skill = {"name": "hub-blender-artist", "slug": "hub-blender-artist", "description": "Create 3D models", "sources": []}
+        selected = agent_orchestrator.select_specialists("Créer un personnage 3D avec Blender", skills=[skill], mcp_names=[])
+        self.assertEqual(selected[0]["id"], "blender")
+        self.assertFalse(selected[0]["dispatch_ready"])
+
     def test_youtube_plan_assigns_video_skills_and_keeps_side_effects_disabled(self):
         skill = {
             "name": "directing-stickman-videos",
