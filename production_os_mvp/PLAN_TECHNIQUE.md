@@ -148,7 +148,7 @@ Une fois que le dashboard et un vrai clip de démonstration tournent, la prochai
 - agent_orchestrator.py associe les skills pertinents aux rôles natifs et prépare un plan sans démarrer les agents externes.
 - engine.py persiste le manifeste agent_skill_plan.json pour chaque mission et charge les instructions sélectionnées dans un contexte borné.
 - agents.py transmet le contexte de skills au routeur de texte et au handoff Stickman. Les autres rôles natifs conservent leurs handlers Python tant qu'un adaptateur dédié n'a pas été validé.
-- Les CLI Codex et OpenCode restent les seuls runtimes externes de texte déclarés intégrés dans ce lot. Claude, Pi, DSH et FCC sont détectés sans exécution automatique ; leurs flags, modes non interactifs, permissions et politiques de coûts doivent être validés avant activation.
+- Les CLI Codex, Antigravity et OpenCode réutilisent les adaptateurs de texte existants ; Ollama reste le moteur local. Claude, Pi, DSH et FCC sont détectés sans exécution automatique ; leurs flags, modes non interactifs, permissions et politiques de coûts doivent être validés avant activation.
 - L'inventaire n'exécute jamais un fichier SKILL.md. Le texte sélectionné est une référence non fiable et ne peut pas autoriser des commandes, l'accès aux secrets, des actions externes ou des dépenses.
 - Le dashboard expose l'inventaire et le planificateur via les endpoints locaux authentifiés /api/agents/registry et /api/agents/plan.
 
