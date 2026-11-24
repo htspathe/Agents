@@ -38,7 +38,7 @@ class SkillRegistryTests(unittest.TestCase):
             root = Path(tmp) / ".agents" / "skills"
             skill = root / "writing-guidelines"
             skill.mkdir(parents=True)
-            (skill / "SKILL.md").write_text("---\\nname: writing-guidelines\\ndescription: Writing guidance\\n---\\n# Rules\\nWrite clearly.\\n", encoding="utf-8")
+            (skill / "SKILL.md").write_text("---\nname: writing-guidelines\ndescription: Writing guidance\n---\n# Rules\nWrite clearly.\n", encoding="utf-8")
             original_roots = skill_registry.SKILL_ROOTS
             try:
                 skill_registry.SKILL_ROOTS = (root,)
