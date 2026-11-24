@@ -1,4 +1,4 @@
-# Production OS — MVP local V0.7 (agent & skill orchestration)
+# Production OS — MVP local V0.8 (agent, skill & video orchestration)
 
 ## V0.6 — Gestion des ressources CPU / NVIDIA
 
@@ -386,3 +386,27 @@ Depuis `production_os_mvp` :
     python -m unittest discover -s tests -v
 
 Les tests couvrent le registre des skills, la déduplication, la sélection par rôle, l'inventaire MCP sans fuite de secrets et le planificateur.
+
+
+## V0.8 — AI Video Factory (Free Only)
+
+- media_factory.py ajoute une file SQLite persistante, un worker local à concurrence 1, une gestion des tâches interrompues et une validation MP4 via FFprobe.
+- FreeLLMAPI utilise POST /v1/videos/generations et reçoit le MP4 binaire. L'identité locale est vérifiée via GET /v1/models avant d'autoriser la création.
+- Agnes AI utilise la création POST /v1/videos, puis le polling /agnesapi et le téléchargement HTTPS du résultat.
+- Le Cost Guardian est fail-closed : aucun modèle n'est autorisé par défaut. Un modèle doit être inscrit dans FREELLMAPI_FREE_VIDEO_MODELS ou AGNES_FREE_VIDEO_MODELS ; Agnes exige aussi AGNES_VIDEO_FREE_CONFIRMED=1. Le modèle auto FreeLLMAPI exige FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+- Ces allowlists sont une confirmation locale de l'opérateur, pas une preuve indépendante de gratuité. Vérifier les tarifs, quotas et conditions du modèle dans le compte fournisseur avant de l'inscrire.
+- Les secrets sont lus depuis l'environnement ou production_os_mvp/.env.local. Ce fichier est ignoré par Git ; ne jamais le partager ou le committer. Un modèle non autorisé, une API non authentifiée ou un endpoint non identifié bloque la génération.
+- Aucun fallback entre fournisseurs vidéo, aucune relance automatique après interruption, aucune publication et aucune dépense implicite.
+- Une image de référence PNG/JPG/WebP peut être téléversée (12 Mo max). La compatibilité image-to-video dépend du modèle et du fournisseur.
+- Endpoints authentifiés : GET /api/video-factory/status, GET /api/video-factory/jobs, POST /api/video-factory/jobs, POST /api/video-factory/reference, POST /api/video-factory/jobs/{id}/retry et GET /api/video-factory/jobs/{id}/file.
+- Dashboard : onglet AI Video Factory, allowlist visible, file d'attente, états, erreurs, relance manuelle et téléchargement MP4.
+
+### Configuration locale
+1. Copier .env.example vers .env.local.
+2. Ajouter la clé unifiée FreeLLMAPI dans FREELLMAPI_API_KEY.
+3. Vérifier dans FreeLLMAPI quels modèles vidéo et quelles routes sont réellement gratuites pour ton compte.
+4. Inscrire uniquement les identifiants confirmés dans FREELLMAPI_FREE_VIDEO_MODELS. Pour le modèle auto, confirmer aussi toute la chaîne de fallback avec FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+5. Pour Agnes, laisser désactivé tant que le tarif et le quota gratuit ne sont pas confirmés ; ensuite seulement ajouter la clé, le modèle et AGNES_VIDEO_FREE_CONFIRMED=1.
+6. Redémarrer Production OS pour charger .env.local.
+
+Le serveur local doit être le bon service sur le port configuré. Si BrainToBillions Studio occupe 3001, changer FREELLMAPI_URL vers le port réel de FreeLLMAPI. L'API doit répondre à /v1/models ; un simple port ouvert ne suffit pas.
