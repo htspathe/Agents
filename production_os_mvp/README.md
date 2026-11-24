@@ -1,4 +1,4 @@
-# Production OS — MVP local V0.6
+# Production OS — MVP local V0.7 (agent & skill orchestration)
 
 ## V0.6 — Gestion des ressources CPU / NVIDIA
 
@@ -365,3 +365,24 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 8. **V1 — Production OS** : supervision unifiée, indicateurs réels, n8n auto-hébergé si les workflows le justifient.
 
 **Objectif budget : 0 € de dépense API obligatoire.** Les moteurs cloud peuvent consommer les quotas ou abonnements déjà associés aux comptes connectés ; une clé Gemini API potentiellement facturable est bloquée par défaut. Les coûts de matériel, électricité, internet, médias sous licence et diffusion ne sont pas inclus.
+
+
+## V0.7 — Inventaire automatique des agents, skills et MCP
+
+- `skill_registry.py` parcourt les répertoires locaux `~/.agents/skills`, `~/.codex/skills`, `~/.claude/skills`, `~/.pi/agent/skills`, `~/.config/opencode/skills` et le dossier local du projet. Les skills dupliqués sont regroupés par nom ; les fichiers originaux ne sont ni déplacés ni copiés dans Git.
+- `runtime_registry.py` détecte Codex, OpenCode, DeepSeek Harness (`dsh`), Pi, Claude Code, les wrappers FCC, Agent Desktop, ainsi que les outils locaux. Les exécutables présents sont distingués des adaptateurs réellement intégrés. La détection n'authentifie aucun compte.
+- `mcp_registry.py` lit les déclarations MCP prises en charge dans les configurations Codex, Claude, Pi et OpenCode. Il ne lance aucun serveur et n'expose ni les arguments, ni les variables d'environnement, ni les clés, ni les URL complètes.
+- `agent_orchestrator.py` prépare un plan par workflow, affecte automatiquement les skills aux rôles et indique le mode d'exécution natif ou le prérequis local.
+- À chaque mission, `engine.py` génère `agent_skill_plan.json` dans le dossier de sortie. Les instructions des skills sélectionnés sont limitées en taille, utilisées comme références et transmises au générateur de contenu et au handoff Stickman. Aucun fichier SKILL.md n'est exécuté.
+- Le dashboard « Agents & Skills » affiche les runtimes, les outils, les serveurs MCP configurés, les skills dédupliqués et un aperçu du plan multi-agents.
+- Endpoints authentifiés : `GET /api/agents/registry` actualise l'inventaire ; `GET /api/agents/plan?workflow=youtube&brief=...` prévisualise une mission sans la lancer.
+- Codex et OpenCode réutilisent leurs adaptateurs de texte existants. Pi, Claude, DSH et les wrappers FCC sont détectés mais restent en « adaptateur à intégrer » tant que leur contrat CLI et leurs protections d'exécution n'ont pas été testés.
+- Budget zéro par défaut, aucun lancement de CLI externe par l'inventaire, aucune publication automatique et aucune autorisation de dépense implicite.
+
+### Tests ciblés V0.7
+
+Depuis `production_os_mvp` :
+
+    python -m unittest discover -s tests -v
+
+Les tests couvrent le registre des skills, la déduplication, la sélection par rôle, l'inventaire MCP sans fuite de secrets et le planificateur.
