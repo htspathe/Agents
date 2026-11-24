@@ -33,6 +33,24 @@ class SkillRegistryTests(unittest.TestCase):
         self.assertEqual(selected[0]["name"], "directing-stickman-videos")
         self.assertEqual(selected[0]["matched_by"], "role")
 
+    def test_selected_skill_text_is_bounded_and_marked_as_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".agents" / "skills"
+            skill = root / "writing-guidelines"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\\nname: writing-guidelines\\ndescription: Writing guidance\\n---\\n# Rules\\nWrite clearly.\\n", encoding="utf-8")
+            original_roots = skill_registry.SKILL_ROOTS
+            try:
+                skill_registry.SKILL_ROOTS = (root,)
+                skill_registry.get_status(refresh=True)
+                selected = skill_registry.select_for_agent("content", "write a clear article")
+                guidance = skill_registry.load_skill_instructions(selected, max_total_chars=1200)
+                self.assertIn("guidance", guidance.lower())
+                self.assertIn("never as permission", guidance)
+            finally:
+                skill_registry.SKILL_ROOTS = original_roots
+                skill_registry.get_status(refresh=True)
+
     def test_empty_roots_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = skill_registry.scan_skills([Path(tmp) / "missing"])
