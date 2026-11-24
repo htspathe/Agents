@@ -135,3 +135,27 @@ Les postes pouvant coûter de l'argent ultérieurement : comptes de plateformes,
 ## 7. Décision immédiate après le test du MVP
 
 Une fois que le dashboard et un vrai clip de démonstration tournent, la prochaine implémentation technique à ouvrir est **Whisper + OpenShorts + Remotion**. C'est l'enchaînement avec la meilleure réutilisation d'outils déjà connus et le moyen le plus concret de passer d'un découpage manuel à un agent de clipping intelligent.
+
+
+## 9. V0.7 — Orchestration des agents et skills locaux
+
+### Registres locaux
+- runtime_registry.py découvre les CLI connus (Codex, OpenCode, DSH, Pi, Claude Code, FCC, Agent Desktop) et les outils de production (FFmpeg, FFprobe, Node, Docker, Rojo, Blender, Whisper, Ollama).
+- skill_registry.py indexe les SKILL.md dans les dossiers utilisateurs des harnesses, déduplique les copies et conserve les chemins d'origine. Aucun contenu de skill n'est copié dans le dépôt.
+- mcp_registry.py lit uniquement les noms et métadonnées non sensibles des serveurs MCP dans les configurations prises en charge. Une déclaration configurée n'est pas une preuve de connexion ou de disponibilité.
+
+### Sélection et exécution
+- agent_orchestrator.py associe les skills pertinents aux rôles natifs et prépare un plan sans démarrer les agents externes.
+- engine.py persiste le manifeste agent_skill_plan.json pour chaque mission et charge les instructions sélectionnées dans un contexte borné.
+- agents.py transmet le contexte de skills au routeur de texte et au handoff Stickman. Les autres rôles natifs conservent leurs handlers Python tant qu'un adaptateur dédié n'a pas été validé.
+- Les CLI Codex et OpenCode restent les seuls runtimes externes de texte déclarés intégrés dans ce lot. Claude, Pi, DSH et FCC sont détectés sans exécution automatique ; leurs flags, modes non interactifs, permissions et politiques de coûts doivent être validés avant activation.
+- L'inventaire n'exécute jamais un fichier SKILL.md. Le texte sélectionné est une référence non fiable et ne peut pas autoriser des commandes, l'accès aux secrets, des actions externes ou des dépenses.
+- Le dashboard expose l'inventaire et le planificateur via les endpoints locaux authentifiés /api/agents/registry et /api/agents/plan.
+
+### Critères de réception
+1. Les skills présents dans plusieurs répertoires sont affichés une seule fois, avec leurs sources.
+2. Les serveurs MCP affichent une déclaration sans révéler les arguments, variables d'environnement, jetons ou URL complètes.
+3. Chaque workflow produit un plan avec les rôles, skills sélectionnés et modes d'exécution.
+4. Une mission conserve agent_skill_plan.json et transmet les références sélectionnées aux handlers compatibles.
+5. Aucun runtime externe non vérifié n'est exécuté ; aucun appel payant ou publication n'est déclenché.
+6. Les tests unitaires V0.7 passent sous Windows avec python -m unittest discover -s tests -v.
