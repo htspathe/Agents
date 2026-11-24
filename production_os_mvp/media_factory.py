@@ -94,7 +94,11 @@ def _agnes_base() -> str:
         raise ValueError("AGNES_BASE_URL doit être une URL HTTPS valide.")
     if not (parsed.hostname == "agnes-ai.com" or parsed.hostname.endswith(".agnes-ai.com")):
         raise ValueError("AGNES_BASE_URL doit utiliser le domaine officiel agnes-ai.com.")
-    return base
+    if parsed.path.rstrip("/") == "/v1":
+        base = base[: -len("/v1")]
+    elif parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError("AGNES_BASE_URL doit être l’origine Agnes, avec ou sans suffixe /v1.")
+    return base.rstrip("/")
 
 
 def _json_request(url: str, key: str, timeout: float = 8.0, method: str = "GET", payload=None):
@@ -502,17 +506,18 @@ def _run_agnes(job: dict, target: Path) -> dict:
     key = os.environ.get("AGNES_API_KEY", "").strip()
     if not key:
         raise RuntimeError("AGNES_API_KEY absent.")
+    image_data = _image_data_url(job.get("image_id"))
     payload = {
         "model": job["model"],
         "prompt": job["prompt"],
-        "seconds": job["duration"],
+        "mode": "reference" if image_data else "text",
+        "seconds": str(job["duration"]),
         "aspect_ratio": job["aspect_ratio"],
         "size": "720P",
+        "n": 1,
     }
-    image_data = _image_data_url(job.get("image_id"))
     if image_data:
-        payload["mode"] = "img2video"
-        payload["first_frame"] = image_data
+        payload["images"] = [image_data]
     request = Request(
         base + "/v1/videos",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
