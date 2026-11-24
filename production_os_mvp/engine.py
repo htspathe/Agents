@@ -167,10 +167,23 @@ def run_job(job_id: str) -> None:
                 skill_assignments[agent_id] = skill_registry_module.select_for_agent(
                     agent_id, ctx.get("brief", ""), limit=3, skills=discovered_skills
                 )
+            from agent_orchestrator import select_specialists
+            import mcp_registry
+            specialist_rows = select_specialists(
+                ctx.get("brief", ""), skills=discovered_skills,
+                mcp_names=mcp_registry.get_status().get("names", []),
+            )
             skill_manifest = {
                 "workflow": job["workflow"],
                 "automatic_selection": True,
                 "skills_are_executed": False,
+                "specialist_dispatch": False,
+                "specialists": [
+                    {"id": item["id"], "name": item["name"], "status": item["status"],
+                     "skills": [skill["name"] for skill in item.get("skills", [])],
+                     "mcp_declarations": item.get("mcp_declarations", [])}
+                    for item in specialist_rows
+                ],
                 "steps": [
                     {"agent_id": agent_id, "skills": [
                         {"name": item["name"], "description": item.get("description", ""),
@@ -187,6 +200,8 @@ def run_job(job_id: str) -> None:
             ctx["notes"].append(
                 f"Skills locaux détectés et routés automatiquement : {selected_count} affectations sur {len(steps)} rôles."
             )
+            if specialist_rows:
+                ctx["notes"].append("Spécialistes complémentaires proposés (non exécutés) : " + ", ".join(item["name"] for item in specialist_rows))
         except Exception as skill_error:
             ctx["notes"].append("Inventaire des skills indisponible ; workflow natif conservé (" + type(skill_error).__name__ + ").")
 
