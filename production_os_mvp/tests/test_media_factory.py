@@ -96,6 +96,33 @@ class MediaFactoryTests(unittest.TestCase):
             "https://cdn.example.com/video.mp4",
         )
 
+    def test_mp4_binary_response_is_saved_with_provider_headers(self):
+        class FakeResponse:
+            def __init__(self):
+                self.headers = {
+                    "Content-Type": "video/mp4",
+                    "X-Provider": "pollinations",
+                    "X-Model": "video-test-model",
+                }
+                self.data = b"\x00\x00\x00\x18ftypisom" + (b"\x00" * 1400)
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, size=-1):
+                if size < 0:
+                    size = len(self.data)
+                chunk, self.data = self.data[:size], self.data[size:]
+                return chunk
+        target = self.root / "sample.mp4"
+        fake = FakeResponse()
+        with patch.object(media_factory, "urlopen", return_value=fake):
+            result = media_factory._write_mp4_response(object(), target, 2)
+        self.assertTrue(target.is_file())
+        self.assertEqual(result["provider"], "pollinations")
+        self.assertEqual(result["model"], "video-test-model")
+        self.assertGreater(result["bytes"], 1024)
+
     def test_provider_status_never_returns_api_key(self):
         with patch.dict(os.environ, {
             "FREELLMAPI_API_KEY": "super-secret-key",
