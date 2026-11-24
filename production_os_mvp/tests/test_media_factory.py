@@ -59,6 +59,15 @@ class MediaFactoryTests(unittest.TestCase):
             self.assertEqual(models, ["auto"])
             self.assertTrue(confirmed)
 
+    def test_known_paid_agnes_model_is_blocked_even_if_allowlisted(self):
+        with patch.dict(os.environ, {
+            "AGNES_FREE_VIDEO_MODELS": "agnes-video-2.5,agnes-video-2.5-flash",
+            "AGNES_VIDEO_FREE_CONFIRMED": "1",
+        }, clear=False):
+            models, confirmed = media_factory._free_model_policy("agnes")
+        self.assertEqual(models, ["agnes-video-2.5-flash"])
+        self.assertTrue(confirmed)
+
     def test_create_job_persists_queue_without_starting_provider(self):
         with patch.dict(os.environ, {
             "FREELLMAPI_FREE_VIDEO_MODELS": "video-model-free",
