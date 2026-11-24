@@ -46,7 +46,7 @@ class SkillRegistryTests(unittest.TestCase):
                 selected = skill_registry.select_for_agent("content", "write a clear article")
                 guidance = skill_registry.load_skill_instructions(selected, max_total_chars=1200)
                 self.assertIn("guidance", guidance.lower())
-                self.assertIn("never as permission", guidance)
+                self.assertIn("jamais comme autorisation", guidance)
             finally:
                 skill_registry.SKILL_ROOTS = original_roots
                 skill_registry.get_status(refresh=True)
