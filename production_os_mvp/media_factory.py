@@ -82,9 +82,11 @@ def _csv_env(name: str) -> list[str]:
 def _freellmapi_base() -> str:
     base = os.environ.get("FREELLMAPI_URL", "http://127.0.0.1:3001").rstrip("/")
     parsed = urlsplit(base)
-    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path or parsed.query or parsed.fragment:
-        raise ValueError("FREELLMAPI_URL doit pointer vers un serveur HTTP local sans chemin.")
-    return base
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path.rstrip("/") not in {"", "/v1"} or parsed.query or parsed.fragment:
+        raise ValueError("FREELLMAPI_URL doit pointer vers un serveur HTTP local, avec ou sans suffixe /v1.")
+    if parsed.path.rstrip("/") == "/v1":
+        base = base[: -len("/v1")]
+    return base.rstrip("/")
 
 
 def _agnes_base() -> str:
