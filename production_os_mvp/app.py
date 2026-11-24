@@ -40,7 +40,7 @@ ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ProductionOS/0.6"
+    server_version = "ProductionOS/0.7"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[HTTP] " + fmt % args + "\n")
