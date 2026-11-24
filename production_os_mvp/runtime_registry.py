@@ -161,9 +161,11 @@ def _freellmapi_status():
     # Never permit a configured remote host from this local diagnostic.
     from urllib.parse import urlsplit
     parsed = urlsplit(base)
-    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path or parsed.query or parsed.fragment:
-        result["note"] = "Diagnostic limité à localhost."
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path.rstrip("/") not in {"", "/v1"} or parsed.query or parsed.fragment:
+        result["note"] = "Diagnostic limité à localhost, avec ou sans suffixe /v1."
         return result
+    if parsed.path.rstrip("/") == "/v1":
+        base = base[: -len("/v1")]
     try:
         payload, _ = _service_json(base + "/v1/models", os.environ.get("FREELLMAPI_API_KEY", ""))
         rows = payload.get("data") if isinstance(payload, dict) else None
