@@ -153,6 +153,7 @@ def provider_status(refresh: bool = False) -> dict:
         "label": "FreeLLMAPI",
         "configured_models": free_models,
         "identity_verified": False,
+        "video_endpoint_verified": False,
         "api_key_configured": bool(os.environ.get("FREELLMAPI_API_KEY")),
         "catalog_video_candidates": [],
         "ready": False,
@@ -177,12 +178,21 @@ def provider_status(refresh: bool = False) -> dict:
                     if "video" in model_id.lower() or "video" in text_caps.lower():
                         candidates.append(model_id[:180])
                 freellm["catalog_video_candidates"] = sorted(set(candidates))[:100]
-                freellm["ready"] = bool(free_models)
-                freellm["note"] = (
-                    "API FreeLLMAPI identifiée. Les modèles autorisés proviennent de l'allowlist locale, pas d'une supposition sur leur prix."
-                    if free_models else
-                    "API identifiée, mais aucune allowlist de modèles vidéo gratuits n'est configurée."
-                )
+                try:
+                    openapi, _ = _json_request(base + "/v1/openapi.json", key, timeout=5)
+                    paths = openapi.get("paths", {}) if isinstance(openapi, dict) else {}
+                    freellm["video_endpoint_verified"] = isinstance(paths, dict) and any(
+                        path in paths for path in ("/v1/videos/generations", "/videos/generations")
+                    )
+                except (HTTPError, OSError, ValueError, TypeError, URLError):
+                    freellm["video_endpoint_verified"] = False
+                freellm["ready"] = bool(free_models and freellm["video_endpoint_verified"])
+                if not free_models:
+                    freellm["note"] = "API identifiée, mais aucune allowlist de modèles vidéo gratuits n'est configurée."
+                elif not freellm["video_endpoint_verified"]:
+                    freellm["note"] = "API identifiée, mais l'endpoint vidéo n'est pas confirmé dans OpenAPI."
+                else:
+                    freellm["note"] = "API FreeLLMAPI et endpoint vidéo identifiés. Les modèles autorisés proviennent de l'allowlist locale, pas d'une supposition sur leur prix."
         else:
             freellm["note"] = "FREELLMAPI_API_KEY absent. Ajoute la clé unifiée dans .env.local ; elle ne sera jamais affichée."
     except HTTPError as exc:
