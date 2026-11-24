@@ -130,8 +130,10 @@ class MediaFactoryTests(unittest.TestCase):
             "FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED": "1",
             "AGNES_API_KEY": "",
             "AGNES_FREE_VIDEO_MODELS": "",
-        }, clear=False), patch.object(media_factory, "_json_request", return_value=(
-            {"data": [{"id": "pollinations-video-model"}]}, {}
+        }, clear=False), patch.object(media_factory, "_json_request", side_effect=lambda url, key, **kwargs: (
+            ({"data": [{"id": "pollinations-video-model"}]}, {})
+            if url.endswith("/v1/models")
+            else ({"paths": {"/v1/videos/generations": {"post": {}}}}, {})
         )):
             status = media_factory.provider_status(refresh=True)
         rendered = json.dumps(status)
