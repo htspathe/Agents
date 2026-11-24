@@ -159,3 +159,32 @@ Une fois que le dashboard et un vrai clip de démonstration tournent, la prochai
 4. Une mission conserve agent_skill_plan.json et transmet les références sélectionnées aux handlers compatibles.
 5. Aucun runtime externe non vérifié n'est exécuté ; aucun appel payant ou publication n'est déclenché.
 6. Les tests unitaires V0.7 passent sous Windows avec python -m unittest discover -s tests -v.
+
+
+## 10. V0.8 — AI Video Factory, mode Free Only
+
+### Fournisseurs
+- FreeLLMAPI : POST /v1/videos/generations ; requête synchrone, réponse MP4 binaire, délai maximal client 310 secondes. L'identité locale est contrôlée via GET /v1/models.
+- Agnes AI : POST /v1/videos, récupération de video_id, polling GET /agnesapi puis téléchargement HTTPS du MP4.
+- Les deux fournisseurs sont indépendants ; aucun fallback automatique ne bascule d'un fournisseur à l'autre.
+
+### Cost Guardian
+- FreeLLMAPI : seuls les modèles de FREELLMAPI_FREE_VIDEO_MODELS sont autorisés. Le modèle auto nécessite FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+- Agnes : seuls les modèles de AGNES_FREE_VIDEO_MODELS sont autorisés si AGNES_VIDEO_FREE_CONFIRMED=1.
+- L'allowlist est une attestation locale de l'opérateur, pas une vérification de facturation par le code. Un modèle absent de l'allowlist est bloqué.
+- Les clés sont chargées depuis l'environnement ou .env.local ; aucune clé n'est retournée par l'API ou écrite dans les manifests.
+- Si un job est en cours lors d'un arrêt, il devient interrupted et nécessite une relance manuelle pour éviter une double génération ou une double facturation.
+
+### File et médias
+- SQLite persiste les tâches et leur état ; un worker local traite une tâche à la fois.
+- Les références image PNG/JPG/WebP sont contrôlées par signature et limitées à 12 Mo.
+- Les MP4 sont limités à 200 Mo, contrôlés par signature et inspectés avec FFprobe si disponible.
+- Les tâches terminées sont exportées dans outputs/video_factory ; les références et la base restent locales et ignorées par Git.
+- La reprise d'un job crée une nouvelle tâche explicite ; aucune répétition automatique de requête POST fournisseur.
+
+### Réception
+1. Sans clé, sans endpoint identifié ou sans allowlist gratuite, le bouton de génération reste désactivé et l'API refuse le job.
+2. Le dashboard permet de créer 1 à 10 variantes, suivre la file, relancer une erreur manuellement et télécharger le MP4.
+3. Le serveur local charge les secrets depuis .env.local sans les exposer.
+4. Les tests vérifient le blocage des modèles non autorisés, l'attestation du modèle auto, la persistance de la file, la validation d'image et la réception du MP4 binaire.
+5. Les coûts et quotas réels doivent être confirmés dans chaque compte fournisseur ; le code ne déduit jamais la gratuité à partir du nom du modèle.
