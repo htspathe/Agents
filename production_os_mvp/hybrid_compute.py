@@ -18,7 +18,7 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
 
-def local_narration(topic, language="fr"):
+def _local_completion(topic, system, max_tokens):
     base = os.environ.get("PRODUCTION_LOCAL_LLM_URL", "").rstrip("/")
     parsed = urlsplit(base)
     if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1","localhost","::1"}
@@ -27,7 +27,7 @@ def local_narration(topic, language="fr"):
     if os.environ.get("PRODUCTION_LOCAL_LLM_OFFLINE_CONFIRMED") != "1":
         raise ValueError("Confirmer que le moteur est hors ligne et ne relaie pas les requêtes au cloud.")
     model = os.environ.get("PRODUCTION_LOCAL_LLM_MODEL", "").strip()
-    if not model or not 3 <= len(topic.strip()) <= 2000 or language not in {"fr","en"}:
+    if not model or not 3 <= len(topic.strip()) <= 16000:
         raise ValueError("Modèle, sujet ou langue invalide.")
     if not base.endswith("/v1"):
         base += "/v1"
@@ -36,14 +36,29 @@ def local_narration(topic, language="fr"):
         catalog = json.loads(response.read(1000000))
     if model not in [row.get("id") for row in catalog.get("data",[]) if isinstance(row,dict)]:
         raise RuntimeError("Le modèle configuré ne figure pas dans le catalogue local.")
-    payload = {"model":model,"messages":[{"role":"system","content":"Write a 25-35 word spoken narration, no headings, no notes, no unsupported factual claims. Language: "+language},{"role":"user","content":topic}],"stream":False,"max_tokens":256}
+    payload = {"model":model,"messages":[{"role":"system","content":system},{"role":"user","content":topic}],"stream":False,"max_tokens":max_tokens}
     req = Request(base+"/chat/completions",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"})
     with opener.open(req,timeout=120) as response:
         result=json.loads(response.read(1000000))
     content=result["choices"][0]["message"]["content"]
-    if not isinstance(content,str) or not 12<=len(content.strip())<=2000:
+    if not isinstance(content,str) or not 12<=len(content.strip())<=16000:
         raise RuntimeError("Narration locale invalide.")
     return content.strip()
+
+def local_narration(topic, language="fr"):
+    if language not in {"fr","en"} or not 3 <= len(topic.strip()) <= 2000:
+        raise ValueError("Sujet ou langue invalide.")
+    return _local_completion(topic, "Write a 25-35 word spoken narration, no headings, no notes, no unsupported factual claims. Language: "+language, 256)
+
+def local_storyboard(narration, count, ratio):
+    if type(count) is not int or not 1 <= count <= 12 or ratio not in {"9:16","16:9"}:
+        raise ValueError("Nombre de scènes ou format invalide.")
+    answer = _local_completion(narration, f"Create exactly {count} distinct chronological text-to-video prompts based on this French narration, aspect ratio {ratio}. Keep subjects and visual style consistent. Return only a JSON array of {count} English prompt strings. No text overlays, logos or narration. Each prompt 15-90 words.", min(1600, 180*count))
+    answer = re.sub(r"^```(?:json)?\s*|\s*```$", "", answer.strip(), flags=re.I)
+    prompts = json.loads(answer)
+    if not isinstance(prompts,list) or len(prompts)!=count or any(not isinstance(p,str) or not 8<=len(p.strip())<=2000 for p in prompts):
+        raise ValueError("Le LLM n'a pas produit un storyboard JSON valide.")
+    return [p.strip() for p in prompts]
 
 def kaggle_command(action, kernel, destination=None):
     if os.environ.get("PRODUCTION_KAGGLE_NONCOMMERCIAL_CONFIRMED")!="1":
