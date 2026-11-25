@@ -13,6 +13,7 @@ import math
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import threading
 import uuid
@@ -21,7 +22,6 @@ from pathlib import Path
 
 import media_factory
 import piper_tts
-import resource_manager
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "outputs" / "hybrid_video"
@@ -72,7 +72,7 @@ def _srt_time(seconds):
     return f"{hours:02}:{minutes:02}:{sec:02},{ms:03}"
 
 
-def transcribe(audio, output, model_name="small", language="fr"):
+def transcribe(audio, output, language="fr"):
     """CPU INT8 only; local model path required, no implicit downloads."""
     from faster_whisper import WhisperModel
     model_path = Path(os.environ.get("PRODUCTION_WHISPER_MODEL_DIR", ""))
@@ -95,8 +95,8 @@ def create(narration, scene_paths, language="fr", ratio="9:16", source="local"):
     narration = str(narration).strip()
     if not 12 <= len(narration) <= 12000:
         raise ValueError("Narration : 12 à 12 000 caractères.")
-    if language not in {"fr", "en"} or ratio not in {"9:16", "16:9"}:
-        raise ValueError("Langue ou format non pris en charge.")
+    if language != "fr" or ratio not in {"9:16", "16:9"}:
+        raise ValueError("Ce pipeline utilise les voix françaises Piper existantes ; français et formats 9:16/16:9 uniquement.")
     if not 1 <= len(scene_paths) <= 12:
         raise ValueError("Entre 1 et 12 scènes MP4 requises.")
     if source not in {"local", "video_factory", "kaggle_experiment"}:
@@ -215,7 +215,7 @@ def _assemble(folder, scenes, ratio, output):
     subprocess.run(command, cwd=folder, capture_output=True, timeout=1200, check=True)
 
 
-def run(job_id):
+def _run_locked(job_id):
     folder = _folder(job_id)
     manifest = get(job_id)
     manifest.update(status="running", error=None)
@@ -226,6 +226,7 @@ def run(job_id):
                 raise RuntimeError("Une scène source a été modifiée ; créer une nouvelle mission.")
         audio, srt, final, qa = (folder / name for name in ("narration.wav","subtitles.srt","final.mp4","qa.json"))
         settings = piper_tts.get_settings()
+        manifest["voice_attribution"] = piper_tts.VOICE_DATA.get(settings["voice"], {}).get("attribution", "")
         # Avoid storing credential-bearing settings in manifest; only hash inputs.
         _stage(manifest, folder, "voice", [manifest["narration"], settings],
                audio, lambda target: piper_tts.synthesize_to_wav(manifest["narration"], target))
@@ -253,6 +254,21 @@ def run(job_id):
     return manifest
 
 
+def run(job_id):
+    # SQLite OS-level write lock serializes this heavy pipeline across CLI/server
+    # processes; a crash releases it automatically.
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(OUTPUT / ".execution.sqlite3", timeout=0)
+    try:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as exc:
+            raise ValueError("Une mission hybride est déjà en cours.") from exc
+        return _run_locked(job_id)
+    finally:
+        connection.close()
+
+
 def start(job_id):
     get(job_id)
     with _LOCK:
@@ -262,6 +278,9 @@ def start(job_id):
     def work():
         try:
             run(job_id)
+        except ValueError:
+            # A second server or CLI may already own the cross-process lock.
+            pass
         finally:
             with _LOCK:
                 _ACTIVE.discard(job_id)
@@ -284,7 +303,7 @@ def main():
     new = sub.add_parser("create")
     new.add_argument("--narration-file", required=True, type=Path)
     new.add_argument("--scene", action="append", required=True)
-    new.add_argument("--language", choices=["fr","en"], default="fr")
+    new.add_argument("--language", choices=["fr"], default="fr")
     new.add_argument("--ratio", choices=["9:16","16:9"], default="9:16")
     new.add_argument("--source", choices=["local","kaggle_experiment"], default="local")
     resume = sub.add_parser("run")
