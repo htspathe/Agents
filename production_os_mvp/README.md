@@ -411,3 +411,47 @@ Les tests couvrent le registre des skills, la déduplication, la sélection par 
 6. Redémarrer Production OS pour charger .env.local.
 
 Le serveur local doit être le bon service sur le port configuré. Si BrainToBillions Studio occupe 3001, changer FREELLMAPI_URL vers le port réel de FreeLLMAPI. L'API doit répondre à /v1/models ; un simple port ouvert ne suffit pas.
+
+
+## Hybrid video walking skeleton — local post-production
+
+The existing local HTTP server remains the only dashboard backend. The Video Factory panel now accepts ordered completed media job IDs and exact French narration, then invokes Piper, faster-whisper CPU INT8, and FFmpeg. The result is a 720p MP4 (vertical or horizontal), with synchronized burned subtitles and technical QA, awaiting human review. The current French Piper voice is reused; English TTS is not implemented in this pipeline yet.
+
+Install the optional transcription dependency in the same Python environment as app.py:
+
+    python -m pip install faster-whisper
+
+Download a CTranslate2 faster-whisper model once (for example Systran/faster-whisper-small) and configure the local model directory in PowerShell:
+
+    $env:PRODUCTION_WHISPER_MODEL_DIR = "C:\path\to\faster-whisper-small"
+
+Piper must be configured and tested in the existing dashboard. FFmpeg and FFprobe must be on PATH, with libx264 and libass support. Start app.py from this directory. The hybrid panel creates a mission from completed Video Factory clips; total footage duration must cover the actual narration, otherwise the mission blocks rather than faking additional scenes. The same mission can be resumed after correcting missing dependencies. Outputs and hashed checkpoints are stored in outputs/hybrid_video/<id>/manifest.json. The CPU assembly uses four encoder threads; no automatic publication. Technical QA does not certify content accuracy or visual quality.
+
+### Manual/import workflow (including noncommercial Kaggle experiments)
+
+    python hybrid_video.py create --narration-file narration.txt --scene scene1.mp4 --scene scene2.mp4
+    python hybrid_video.py run <id>
+    python hybrid_video.py list
+
+Use --source kaggle_experiment for Kaggle footage. It is labeled noncommercial; do not use it for monetized content unless permitted by applicable terms and licenses. CLI status/download only (no notebook submission yet):
+
+    $env:PRODUCTION_KAGGLE_NONCOMMERCIAL_CONFIRMED = "1"
+    python hybrid_compute.py kaggle-status username/notebook
+    python hybrid_compute.py kaggle-output username/notebook .\kaggle-download
+
+The official Kaggle CLI must already be installed and authenticated. The WanGP notebook, GPU quota, model licenses and notebook execution must be verified separately. No credentials are copied to Git.
+
+### Optional local script generator (Flyx / compatible endpoint)
+
+Configure the actual local offline server URL and its exact model ID, after confirming no cloud proxy is involved:
+
+    $env:PRODUCTION_LOCAL_LLM_URL = "http://127.0.0.1:YOUR_PORT/v1"
+    $env:PRODUCTION_LOCAL_LLM_MODEL = "YOUR_LOCAL_MODEL_ID"
+    $env:PRODUCTION_LOCAL_LLM_OFFLINE_CONFIRMED = "1"
+    python hybrid_compute.py narration "Sujet de la vidéo" --output narration.txt
+
+This adapter checks the model catalog and requests short narration without automatic fallback. The Flyx-specific runtime and performance are not yet validated. Review the script before using it.
+
+### Limits of this increment
+
+No automatic Kaggle/WanGP submission, no model download, no scene generation from a topic inside the hybrid pipeline, no Remotion timeline integration, no automatic night runner yet. Video Factory still handles scene generation separately. The local hybrid assembler is serial across processes. Remote generation authorization is rechecked immediately before dispatch. API free-model allowlists are operator confirmations, not real-time billing guarantees.
