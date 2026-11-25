@@ -72,12 +72,18 @@ def _srt_time(seconds):
     return f"{hours:02}:{minutes:02}:{sec:02},{ms:03}"
 
 
+def whisper_model_path():
+    configured = os.environ.get("PRODUCTION_WHISPER_MODEL_DIR", "").strip()
+    model_path = Path(configured).expanduser() if configured else Path.home() / "AI-Models" / "faster-whisper-small"
+    if not model_path.is_dir() or not (model_path / "model.bin").is_file():
+        raise RuntimeError("Modèle faster-whisper local absent. Configurer PRODUCTION_WHISPER_MODEL_DIR.")
+    return model_path.resolve()
+
+
 def transcribe(audio, output, language="fr"):
     """CPU INT8 only; local model path required, no implicit downloads."""
     from faster_whisper import WhisperModel
-    model_path = Path(os.environ.get("PRODUCTION_WHISPER_MODEL_DIR", ""))
-    if not os.environ.get("PRODUCTION_WHISPER_MODEL_DIR") or not model_path.is_dir():
-        raise RuntimeError("Configurer PRODUCTION_WHISPER_MODEL_DIR vers un modèle faster-whisper local.")
+    model_path = whisper_model_path()
     model = WhisperModel(str(model_path), device="cpu", compute_type="int8",
                          cpu_threads=4, local_files_only=True)
     segments, _ = model.transcribe(str(audio), language=language, vad_filter=False)
@@ -244,7 +250,7 @@ def _run_locked(job_id):
         _stage(manifest, folder, "voice", [manifest["narration"], settings],
                audio, lambda target: piper_tts.synthesize_to_wav(manifest["narration"], target))
         _stage(manifest, folder, "subtitles", [_hash(audio), manifest["language"],
-               os.environ.get("PRODUCTION_WHISPER_MODEL_DIR", "")], srt,
+               str(whisper_model_path())], srt,
                lambda target: transcribe(audio, target, language=manifest["language"]))
         _stage(manifest, folder, "assembly", [manifest["scenes"], _hash(audio), _hash(srt), manifest["ratio"]],
                final, lambda target: _assemble(folder, manifest["scenes"], manifest["ratio"], target))
