@@ -1,5 +1,8 @@
 import json
 import os
+import shutil
+import subprocess
+import wave
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +50,26 @@ class HybridTests(unittest.TestCase):
 
     def test_srt_timestamp(self):
         self.assertEqual(hv._srt_time(61.234),"00:01:01,234")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg and FFprobe required")
+    def test_real_ffmpeg_assembly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            scene=folder/"scene_00.mp4"
+            subprocess.run([shutil.which("ffmpeg"),"-y","-v","error","-f","lavfi","-i","color=c=blue:s=320x240:r=24:d=2","-c:v","libx264","-threads","2",str(scene)],check=True,capture_output=True,timeout=30)
+            with wave.open(str(folder/"narration.wav"),"wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(16000)
+                audio.writeframes(b"\x00\x00"*16000)
+            (folder/"subtitles.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTest\n",encoding="utf-8")
+            final=folder/"final.mp4"
+            hv._assemble(folder,[{"file":scene.name}],"9:16",final)
+            data,duration=hv._probe(final)
+            self.assertLess(abs(duration-1),0.5)
+            self.assertEqual({s["codec_type"] for s in data["streams"]},{"video","audio"})
+            video=next(s for s in data["streams"] if s["codec_type"]=="video")
+            self.assertEqual((video["width"],video["height"]),(720,1280))
 
     def test_invalid_scene_ids_blocked(self):
         with patch.object(hv.media_factory,"output_path",return_value=None):
