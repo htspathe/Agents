@@ -32,6 +32,7 @@ import mcp_registry
 import runtime_registry
 import skill_registry
 import media_factory
+import hybrid_video
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
@@ -132,6 +133,27 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, agent_orchestrator.build_plan(workflow, brief))
             except ValueError as exc:
                 self.respond(400, {"error": str(exc)[:250]})
+            return
+        if path == "/api/hybrid-video/jobs":
+            self.respond(200, {"jobs": hybrid_video.list_jobs()})
+            return
+        hybrid_file = re.fullmatch(r"/api/hybrid-video/jobs/([0-9a-f]{12})/file", path)
+        if hybrid_file:
+            try:
+                target = hybrid_video.final_path(hybrid_file.group(1))
+            except (ValueError, OSError):
+                target = None
+            if not target:
+                return self.respond(404, {"error": "Rendu indisponible"})
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Disposition", 'attachment; filename="final.mp4"')
+            self.send_header("Content-Length", str(target.stat().st_size))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            with target.open("rb") as stream:
+                shutil.copyfileobj(stream, self.wfile, length=256*1024)
             return
         if path == "/api/video-factory/status":
             self.respond(200, media_factory.get_status())
@@ -254,6 +276,27 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/hybrid-video/jobs":
+            if length > 60000:
+                return self.respond(413, {"error": "Mission trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                mission = hybrid_video.create_from_media(data)
+                return self.respond(201, {"id": mission["id"], "status": "queued"})
+            except (ValueError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        hybrid_start = re.fullmatch(r"/api/hybrid-video/jobs/([0-9a-f]{12})/run", path)
+        if hybrid_start:
+            if length > 1000:
+                return self.respond(413, {"error": "Requête trop volumineuse"})
+            self.rfile.read(length)
+            try:
+                hybrid_video.start(hybrid_start.group(1))
+                return self.respond(202, {"id": hybrid_start.group(1), "status": "accepted"})
+            except (ValueError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
         if path == "/api/video-factory/reference":
             if length > media_factory.MAX_REFERENCE_BYTES:
                 return self.respond(413, {"error": "Image de référence limitée à 12 Mo"})
