@@ -455,3 +455,14 @@ This adapter checks the model catalog and requests short narration without autom
 ### Limits of this increment
 
 No automatic Kaggle/WanGP submission, no model download, no scene generation from a topic inside the hybrid pipeline, no Remotion timeline integration, no automatic night runner yet. Video Factory still handles scene generation separately. The local hybrid assembler is serial across processes. Remote generation authorization is rechecked immediately before dispatch. API free-model allowlists are operator confirmations, not real-time billing guarantees.
+
+
+## Scene Director — automated short video missions
+
+Start the existing app.py server and open AI Video Factory. Select a verified free provider/model and 9:16 or 16:9. In Scene Director enter the subject, optionally a French narration, clip duration and maximum number of clips. A configured offline local OpenAI-compatible LLM remains required for storyboard generation (and narration if omitted). The default downloaded faster-whisper model directory is ~/AI-Models/faster-whisper-small; an explicit PRODUCTION_WHISPER_MODEL_DIR overrides it.
+
+The director generates the voice once, measures its real duration, calculates the scene count (bounded by the user-selected maximum), generates distinct JSON storyboard prompts, submits them atomically to the existing media queue, waits for completed clips, then assembles and validates the MP4. The narration checkpoint is transferred to the hybrid assembler. Mission manifests in outputs/directed_video and stable scene IDs protect against duplicate queue insertion across restarts. One director mission is processed at a time while app.py runs. This is an initial persistent worker, not a full scheduled Night Runner.
+
+Failed/interrupted remote jobs are not retried automatically. To recover, retry the failed scene explicitly in Video Factory, wait for the replacement MP4 to finish, attach its ID using Replace scene, and resume. A retry may duplicate work already accepted remotely. No provider fallback or publication is automatic. Use one app.py server instance. The final MP4 awaits visual and editorial review. No model license or current pricing is inferred from the provider name.
+
+Configuration of an offline LLM, current provider allowlists, voice and actual provider generation still need local verification. Kaggle/WanGP submission and a scheduled night runner remain future work.
