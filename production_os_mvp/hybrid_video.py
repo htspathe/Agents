@@ -91,7 +91,7 @@ def transcribe(audio, output, language="fr"):
     output.write_text("\n".join(cues), encoding="utf-8")
 
 
-def create(narration, scene_paths, language="fr", ratio="9:16", source="local"):
+def create(narration, scene_paths, language="fr", ratio="9:16", source="local", *, job_id=None, voice_seed=None):
     narration = str(narration).strip()
     if not 12 <= len(narration) <= 12000:
         raise ValueError("Narration : 12 à 12 000 caractères.")
@@ -101,8 +101,14 @@ def create(narration, scene_paths, language="fr", ratio="9:16", source="local"):
         raise ValueError("Entre 1 et 12 scènes MP4 requises.")
     if source not in {"local", "video_factory", "kaggle_experiment"}:
         raise ValueError("Source inconnue.")
-    job_id = uuid.uuid4().hex[:12]
-    folder = _folder(job_id)
+    job_id = job_id or uuid.uuid4().hex[:12]
+    destination = _folder(job_id)
+    if destination.exists():
+        prior = get(job_id)
+        if (prior["narration"], prior["language"], prior["ratio"], prior["source"]) != (narration, language, ratio, source) or [s["sha256"] for s in prior["scenes"]] != [_hash(p) for p in scene_paths]:
+            raise ValueError("Conflit de mission hybride existante.")
+        return prior
+    folder = destination.with_name(".staging-" + uuid.uuid4().hex)
     folder.mkdir(parents=True)
     scenes = []
     try:
@@ -120,7 +126,14 @@ def create(narration, scene_paths, language="fr", ratio="9:16", source="local"):
                     "ratio": ratio, "source": source, "scenes": scenes,
                     "status": "queued", "steps": {}, "error": None,
                     "usage": "noncommercial_experiment" if source == "kaggle_experiment" else "rights_unverified"}
+        if voice_seed:
+            audio, settings = voice_seed
+            target = folder / "narration.wav"
+            shutil.copyfile(audio, target)
+            fingerprint = hashlib.sha256(json.dumps([narration, settings], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            manifest["steps"]["voice"] = {"input": fingerprint, "sha256": _hash(target), "file": target.name}
         _write(folder / "manifest.json", manifest)
+        os.rename(folder, destination)
         return manifest
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
