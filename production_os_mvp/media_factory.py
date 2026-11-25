@@ -626,6 +626,11 @@ def _process_job(job: dict):
     job_id = job["id"]
     target = OUTPUT_DIR / (job_id + ".mp4")
     try:
+        # Recheck authorization at dispatch, not only when queued.
+        _validate_request(job)
+        status = provider_status(refresh=True)["providers"].get(job["provider"], {})
+        if not status.get("ready") or job["model"] not in status.get("configured_models", []):
+            raise RuntimeError("Fournisseur ou modèle non autorisé au moment de l’exécution.")
         if job["provider"] == "freellmapi":
             result = _run_freellmapi(job, target)
         elif job["provider"] == "agnes":
