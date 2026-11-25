@@ -33,6 +33,7 @@ import runtime_registry
 import skill_registry
 import media_factory
 import hybrid_video
+import scene_director
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
@@ -133,6 +134,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, agent_orchestrator.build_plan(workflow, brief))
             except ValueError as exc:
                 self.respond(400, {"error": str(exc)[:250]})
+            return
+        if path == "/api/scene-director/jobs":
+            self.respond(200, {"jobs": scene_director.list_jobs()[:50]})
             return
         if path == "/api/hybrid-video/jobs":
             self.respond(200, {"jobs": hybrid_video.list_jobs()})
@@ -276,6 +280,30 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/scene-director/jobs":
+            if length > 16000:
+                return self.respond(413, {"error": "Mission trop volumineuse"})
+            try:
+                job = scene_director.create(json.loads(self.rfile.read(length)))
+                return self.respond(202, job)
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        director_action = re.fullmatch(r"/api/scene-director/jobs/([0-9a-f]{12})/(resume|replace)", path)
+        if director_action:
+            if length > 2000:
+                return self.respond(413, {"error": "Requête trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                job_id, action = director_action.groups()
+                if action == "resume":
+                    scene_director.resume(job_id)
+                else:
+                    scene_director.replace_scene(job_id, data.get("old_id"), data.get("new_id"))
+                return self.respond(200, scene_director.get(job_id))
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
         if path == "/api/hybrid-video/jobs":
             if length > 60000:
                 return self.respond(413, {"error": "Mission trop volumineuse"})
@@ -546,6 +574,7 @@ def main():
     args = parser.parse_args()
     engine.init()
     media_factory.start_worker()
+    scene_director.start_worker()
     if args.demo_video:
         print("Vidéo synthétique disponible :", make_demo_video())
     if args.demo:
@@ -565,6 +594,7 @@ def main():
     except KeyboardInterrupt:
         print("\nArrêt du serveur.")
     finally:
+        scene_director.stop_worker()
         media_factory.stop_worker()
         server.server_close()
 
