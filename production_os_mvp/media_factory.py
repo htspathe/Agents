@@ -395,6 +395,50 @@ def create_jobs(data: dict, count: int = 1) -> list[dict]:
     return jobs
 
 
+def enqueue_storyboard(mission_id: str, requests: list[dict]) -> list[str]:
+    """Atomic, idempotent submission of distinct scene requests.
+
+    A stable ID per mission/scene prevents duplicate remote POSTs if the
+    orchestration process crashes after committing the queue transaction.
+    Existing failed/interrupted jobs are never reset here.
+    """
+    import hashlib
+    if not re.fullmatch(r"[0-9a-f]{12}", mission_id) or not 1 <= len(requests) <= 12:
+        raise ValueError("Storyboard invalide.")
+    validated = [_validate_request(item) for item in requests]
+    ids = [hashlib.sha256(f"story:{mission_id}:{i}".encode()).hexdigest()[:12]
+           for i in range(len(validated))]
+    init()
+    # Existing jobs may be recovered even if the provider is currently offline.
+    with _db() as db:
+        existing = [db.execute("SELECT * FROM media_jobs WHERE id=?", (job_id,)).fetchone()
+                    for job_id in ids]
+    def check(row, item):
+        if row and any(row[key] != item[key] for key in item):
+            raise ValueError("Conflit d'identifiant storyboard ; aucun doublon soumis.")
+    for row, item in zip(existing, validated):
+        check(row, item)
+    if all(existing):
+        return ids
+    providers = provider_status(refresh=True)["providers"]
+    for item in validated:
+        provider = providers.get(item["provider"], {})
+        if not provider.get("ready") or item["model"] not in provider.get("configured_models", []):
+            raise ValueError("Fournisseur ou modèle vidéo non autorisé.")
+    with _db() as db:
+        db.execute("BEGIN IMMEDIATE")
+        for job_id, item in zip(ids, validated):
+            row = db.execute("SELECT * FROM media_jobs WHERE id=?", (job_id,)).fetchone()
+            check(row, item)
+            if not row:
+                db.execute(
+                    "INSERT INTO media_jobs(id,provider,model,prompt,duration,aspect_ratio,image_id,status) VALUES(?,?,?,?,?,?,?,'queued')",
+                    (job_id, item["provider"], item["model"], item["prompt"], item["duration"], item["aspect_ratio"], item["image_id"]),
+                )
+    _notify_worker()
+    return ids
+
+
 def _notify_worker():
     # Wake the worker without making queue submission depend on worker availability.
     _WAKE.set()
