@@ -27,6 +27,13 @@ import resource_manager
 import piper_tts
 import voice_studio
 import stickman_worker
+import agent_orchestrator
+import mcp_registry
+import runtime_registry
+import skill_registry
+import media_factory
+import hybrid_video
+import scene_director
 from agents import AGENTS, LABELS, ROOT, WORKFLOW_STEPS, stickman_status
 
 TOKEN = secrets.token_urlsafe(36)
@@ -36,7 +43,7 @@ ALLOWED_ARTIFACTS = engine.ARTIFACT_EXTENSIONS
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ProductionOS/0.6"
+    server_version = "ProductionOS/0.8"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[HTTP] " + fmt % args + "\n")
@@ -106,7 +113,81 @@ class Handler(BaseHTTPRequestHandler):
                                "piper": piper_tts.get_status(),
                                "piper_settings": piper_tts.get_settings(),
                                "voice_studio": voice_studio.status(),
-                               "voice_studio_settings": voice_studio.get_settings()})
+                               "voice_studio_settings": voice_studio.get_settings(),
+                               "agent_runtimes": runtime_registry.get_status(),
+                               "skills_registry": skill_registry.get_status(),
+                               "mcp_registry": mcp_registry.get_status()})
+            return
+        if path == "/api/agents/registry":
+            self.respond(200, {
+                "runtimes": runtime_registry.get_status(refresh=True),
+                "skills": skill_registry.get_status(refresh=True),
+                "mcp": mcp_registry.get_status(refresh=True),
+                "logical_agents": [{"id": i, "name": n, "role": r} for i, n, r in AGENTS],
+            })
+            return
+        if path == "/api/agents/plan":
+            params = parse_qs(urlsplit(self.path).query)
+            workflow = params.get("workflow", [""])[0][:40]
+            brief = params.get("brief", [""])[0][:1200]
+            try:
+                self.respond(200, agent_orchestrator.build_plan(workflow, brief))
+            except ValueError as exc:
+                self.respond(400, {"error": str(exc)[:250]})
+            return
+        if path == "/api/scene-director/jobs":
+            self.respond(200, {"jobs": scene_director.list_jobs()[:50]})
+            return
+        if path == "/api/hybrid-video/jobs":
+            self.respond(200, {"jobs": hybrid_video.list_jobs()})
+            return
+        hybrid_file = re.fullmatch(r"/api/hybrid-video/jobs/([0-9a-f]{12})/file", path)
+        if hybrid_file:
+            try:
+                target = hybrid_video.final_path(hybrid_file.group(1))
+            except (ValueError, OSError):
+                target = None
+            if not target:
+                return self.respond(404, {"error": "Rendu indisponible"})
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Disposition", 'attachment; filename="final.mp4"')
+            self.send_header("Content-Length", str(target.stat().st_size))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            with target.open("rb") as stream:
+                shutil.copyfileobj(stream, self.wfile, length=256*1024)
+            return
+        if path == "/api/video-factory/status":
+            self.respond(200, media_factory.get_status())
+            return
+        if path == "/api/video-factory/jobs":
+            self.respond(200, {"jobs": media_factory.list_jobs(50)})
+            return
+        video_file_match = re.fullmatch(r"/api/video-factory/jobs/([0-9a-f]{12})/file", path)
+        if video_file_match:
+            target = media_factory.output_path(video_file_match.group(1))
+            if not target:
+                self.respond(404, {"error": "Vidéo indisponible"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+            self.send_header("Content-Length", str(target.stat().st_size))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            with target.open("rb") as video_file:
+                shutil.copyfileobj(video_file, self.wfile, length=256 * 1024)
+            return
+        video_job_match = re.fullmatch(r"/api/video-factory/jobs/([0-9a-f]{12})", path)
+        if video_job_match:
+            job = media_factory.get_job(video_job_match.group(1))
+            if not job:
+                self.respond(404, {"error": "Mission vidéo introuvable"})
+            else:
+                self.respond(200, job)
             return
         if path == "/api/library":
             params = parse_qs(urlsplit(self.path).query)
@@ -199,6 +280,86 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(400, {"error": "Taille invalide"})
         if length < 1 or length > MAX_UPLOAD:
             return self.respond(413, {"error": "Fichier ou requête trop volumineux"})
+        if path == "/api/scene-director/jobs":
+            if length > 16000:
+                return self.respond(413, {"error": "Mission trop volumineuse"})
+            try:
+                job = scene_director.create(json.loads(self.rfile.read(length)))
+                return self.respond(202, job)
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        director_action = re.fullmatch(r"/api/scene-director/jobs/([0-9a-f]{12})/(resume|replace)", path)
+        if director_action:
+            if length > 2000:
+                return self.respond(413, {"error": "Requête trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                job_id, action = director_action.groups()
+                if action == "resume":
+                    scene_director.resume(job_id)
+                else:
+                    scene_director.replace_scene(job_id, data.get("old_id"), data.get("new_id"))
+                return self.respond(200, scene_director.get(job_id))
+            except (ValueError, TypeError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        if path == "/api/hybrid-video/jobs":
+            if length > 60000:
+                return self.respond(413, {"error": "Mission trop volumineuse"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                mission = hybrid_video.create_from_media(data)
+                return self.respond(201, {"id": mission["id"], "status": "queued"})
+            except (ValueError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        hybrid_start = re.fullmatch(r"/api/hybrid-video/jobs/([0-9a-f]{12})/run", path)
+        if hybrid_start:
+            if length > 1000:
+                return self.respond(413, {"error": "Requête trop volumineuse"})
+            self.rfile.read(length)
+            try:
+                hybrid_video.start(hybrid_start.group(1))
+                return self.respond(202, {"id": hybrid_start.group(1), "status": "accepted"})
+            except (ValueError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
+        if path == "/api/video-factory/reference":
+            if length > media_factory.MAX_REFERENCE_BYTES:
+                return self.respond(413, {"error": "Image de référence limitée à 12 Mo"})
+            try:
+                result = media_factory.save_reference_image(
+                    self.headers.get("X-Filename", "reference.png"), self.rfile, length
+                )
+                return self.respond(201, result)
+            except (ValueError, OSError) as exc:
+                return self.respond(400, {"error": str(exc)[:300]})
+        if path == "/api/video-factory/jobs":
+            if length > 20_000:
+                return self.respond(413, {"error": "Brief vidéo trop volumineux"})
+            try:
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict):
+                    raise ValueError("Objet JSON attendu")
+                count = data.pop("count", 1)
+                jobs = media_factory.create_jobs(data, count)
+                return self.respond(202, {"jobs": jobs, "message": "Générations ajoutées à la file locale."})
+            except (ValueError, TypeError) as exc:
+                return self.respond(400, {"error": str(exc)[:500]})
+        video_retry_match = re.fullmatch(r"/api/video-factory/jobs/([0-9a-f]{12})/retry", path)
+        if video_retry_match:
+            if length > 1000:
+                return self.respond(413, {"error": "Requête de relance trop volumineuse"})
+            try:
+                if length:
+                    body = json.loads(self.rfile.read(length))
+                    if not isinstance(body, dict):
+                        raise ValueError("Objet JSON attendu")
+                job = media_factory.retry_job(video_retry_match.group(1))
+                return self.respond(202, {"job": job, "message": "Nouvelle génération ajoutée à la file."})
+            except (ValueError, TypeError) as exc:
+                return self.respond(400, {"error": str(exc)[:400]})
         if path == "/api/voices/settings":
             if length > 4000:
                 return self.respond(413, {"error": "Configuration vocale trop volumineuse"})
@@ -412,6 +573,8 @@ def main():
     parser.add_argument("--demo-video", action="store_true", help="Créer une source vidéo synthétique pour tester Clipping")
     args = parser.parse_args()
     engine.init()
+    media_factory.start_worker()
+    scene_director.start_worker()
     if args.demo_video:
         print("Vidéo synthétique disponible :", make_demo_video())
     if args.demo:
@@ -430,6 +593,9 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nArrêt du serveur.")
+    finally:
+        scene_director.stop_worker()
+        media_factory.stop_worker()
         server.server_close()
 
 

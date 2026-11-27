@@ -1,4 +1,4 @@
-# Production OS — MVP local V0.6
+# Production OS — MVP local V0.8 (agent, skill & video orchestration)
 
 ## V0.6 — Gestion des ressources CPU / NVIDIA
 
@@ -365,3 +365,104 @@ Le moteur Research ne navigue pas sur Internet ; le contenu produit hors Ollama 
 8. **V1 — Production OS** : supervision unifiée, indicateurs réels, n8n auto-hébergé si les workflows le justifient.
 
 **Objectif budget : 0 € de dépense API obligatoire.** Les moteurs cloud peuvent consommer les quotas ou abonnements déjà associés aux comptes connectés ; une clé Gemini API potentiellement facturable est bloquée par défaut. Les coûts de matériel, électricité, internet, médias sous licence et diffusion ne sont pas inclus.
+
+
+## V0.7 — Inventaire automatique des agents, skills et MCP
+
+- `skill_registry.py` parcourt les répertoires locaux `~/.agents/skills`, `~/.codex/skills`, `~/.claude/skills`, `~/.pi/agent/skills`, `~/.config/opencode/skills` et le dossier local du projet. Les skills dupliqués sont regroupés par nom ; les fichiers originaux ne sont ni déplacés ni copiés dans Git.
+- `runtime_registry.py` détecte Codex, OpenCode, DeepSeek Harness (`dsh`), Pi, Claude Code, les wrappers FCC, Agent Desktop, ainsi que les outils locaux. Les exécutables présents sont distingués des adaptateurs réellement intégrés. La détection n'authentifie aucun compte.
+- `mcp_registry.py` lit les déclarations MCP prises en charge dans les configurations Codex, Claude, Pi et OpenCode. Il ne lance aucun serveur et n'expose ni les arguments, ni les variables d'environnement, ni les clés, ni les URL complètes.
+- `agent_orchestrator.py` prépare un plan par workflow, affecte automatiquement les skills aux rôles et indique le mode d'exécution natif ou le prérequis local.
+- À chaque mission, `engine.py` génère `agent_skill_plan.json` dans le dossier de sortie. Les instructions des skills sélectionnés sont limitées en taille, utilisées comme références et transmises au générateur de contenu et au handoff Stickman. Aucun fichier SKILL.md n'est exécuté.
+- Le dashboard « Agents & Skills » affiche les runtimes, les outils, les serveurs MCP configurés, les skills dédupliqués et un aperçu du plan multi-agents.
+- Endpoints authentifiés : `GET /api/agents/registry` actualise l'inventaire ; `GET /api/agents/plan?workflow=youtube&brief=...` prévisualise une mission sans la lancer.
+- Codex, Antigravity et OpenCode réutilisent leurs adaptateurs de texte existants ; Ollama reste le moteur local. Pi, Claude, DSH et les wrappers FCC sont détectés mais restent en « adaptateur à intégrer » tant que leur contrat CLI et leurs protections d'exécution n'ont pas été testés.
+- Budget zéro par défaut, aucun lancement de CLI externe par l'inventaire, aucune publication automatique et aucune autorisation de dépense implicite.
+
+### Tests ciblés V0.7
+
+Depuis `production_os_mvp` :
+
+    python -m unittest discover -s tests -v
+
+Les tests couvrent le registre des skills, la déduplication, la sélection par rôle, l'inventaire MCP sans fuite de secrets et le planificateur.
+
+
+## V0.8 — AI Video Factory (Free Only)
+
+- media_factory.py ajoute une file SQLite persistante, un worker local à concurrence 1, une gestion des tâches interrompues et une validation MP4 via FFprobe.
+- FreeLLMAPI utilise POST /v1/videos/generations et reçoit le MP4 binaire. L'identité locale est vérifiée via GET /v1/models avant d'autoriser la création.
+- Agnes AI utilise la création POST /v1/videos, puis le polling /agnesapi et le téléchargement HTTPS du résultat.
+- Le Cost Guardian est fail-closed : aucun modèle n'est autorisé par défaut. Un modèle doit être inscrit dans FREELLMAPI_FREE_VIDEO_MODELS ou AGNES_FREE_VIDEO_MODELS ; Agnes exige aussi AGNES_VIDEO_FREE_CONFIRMED=1. Le modèle auto FreeLLMAPI exige FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+- Ces allowlists sont une confirmation locale de l'opérateur, pas une preuve indépendante de gratuité. Vérifier les tarifs, quotas et conditions du modèle dans le compte fournisseur avant de l'inscrire.
+- Agnes Video 2.5 (modèle de base) est bloqué en Free Only car le tarif publié est payant ; Agnes Video 2.5 Flash n'est qu'une promotion temporaire à 0 $/s selon le catalogue public et doit être revalidé dans la console avant activation.
+- Les secrets sont lus depuis l'environnement ou production_os_mvp/.env.local. Ce fichier est ignoré par Git ; ne jamais le partager ou le committer. Un modèle non autorisé, une API non authentifiée ou un endpoint non identifié bloque la génération.
+- Aucun fallback entre fournisseurs vidéo, aucune relance automatique après interruption, aucune publication et aucune dépense implicite.
+- Une image de référence PNG/JPG/WebP peut être téléversée (12 Mo max). La compatibilité image-to-video dépend du modèle et du fournisseur.
+- Endpoints authentifiés : GET /api/video-factory/status, GET /api/video-factory/jobs, POST /api/video-factory/jobs, POST /api/video-factory/reference, POST /api/video-factory/jobs/{id}/retry et GET /api/video-factory/jobs/{id}/file.
+- Dashboard : onglet AI Video Factory, allowlist visible, file d'attente, états, erreurs, relance manuelle et téléchargement MP4.
+
+### Configuration locale
+1. Copier .env.example vers .env.local.
+2. Ajouter la clé unifiée FreeLLMAPI dans FREELLMAPI_API_KEY.
+3. Vérifier dans FreeLLMAPI quels modèles vidéo et quelles routes sont réellement gratuites pour ton compte.
+4. Inscrire uniquement les identifiants confirmés dans FREELLMAPI_FREE_VIDEO_MODELS. Pour le modèle auto, confirmer aussi toute la chaîne de fallback avec FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+5. Pour Agnes, laisser désactivé tant que le tarif et le quota gratuit ne sont pas confirmés ; ensuite seulement ajouter la clé, le modèle et AGNES_VIDEO_FREE_CONFIRMED=1.
+6. Redémarrer Production OS pour charger .env.local.
+
+Le serveur local doit être le bon service sur le port configuré. Si BrainToBillions Studio occupe 3001, changer FREELLMAPI_URL vers le port réel de FreeLLMAPI. L'API doit répondre à /v1/models ; un simple port ouvert ne suffit pas.
+
+
+## Hybrid video walking skeleton — local post-production
+
+The existing local HTTP server remains the only dashboard backend. The Video Factory panel now accepts ordered completed media job IDs and exact French narration, then invokes Piper, faster-whisper CPU INT8, and FFmpeg. The result is a 720p MP4 (vertical or horizontal), with synchronized burned subtitles and technical QA, awaiting human review. The current French Piper voice is reused; English TTS is not implemented in this pipeline yet.
+
+Install the optional transcription dependency in the same Python environment as app.py:
+
+    python -m pip install faster-whisper
+
+Download a CTranslate2 faster-whisper model once (for example Systran/faster-whisper-small) and configure the local model directory in PowerShell:
+
+    $env:PRODUCTION_WHISPER_MODEL_DIR = "C:\path\to\faster-whisper-small"
+
+Piper must be configured and tested in the existing dashboard. FFmpeg and FFprobe must be on PATH, with libx264 and libass support. Start app.py from this directory. The hybrid panel creates a mission from completed Video Factory clips; total footage duration must cover the actual narration, otherwise the mission blocks rather than faking additional scenes. The same mission can be resumed after correcting missing dependencies. Outputs and hashed checkpoints are stored in outputs/hybrid_video/<id>/manifest.json. The CPU assembly uses four encoder threads; no automatic publication. Technical QA does not certify content accuracy or visual quality.
+
+### Manual/import workflow (including noncommercial Kaggle experiments)
+
+    python hybrid_video.py create --narration-file narration.txt --scene scene1.mp4 --scene scene2.mp4
+    python hybrid_video.py run <id>
+    python hybrid_video.py list
+
+Use --source kaggle_experiment for Kaggle footage. It is labeled noncommercial; do not use it for monetized content unless permitted by applicable terms and licenses. CLI status/download only (no notebook submission yet):
+
+    $env:PRODUCTION_KAGGLE_NONCOMMERCIAL_CONFIRMED = "1"
+    python hybrid_compute.py kaggle-status username/notebook
+    python hybrid_compute.py kaggle-output username/notebook .\kaggle-download
+
+The official Kaggle CLI must already be installed and authenticated. The WanGP notebook, GPU quota, model licenses and notebook execution must be verified separately. No credentials are copied to Git.
+
+### Optional local script generator (Flyx / compatible endpoint)
+
+Configure the actual local offline server URL and its exact model ID, after confirming no cloud proxy is involved:
+
+    $env:PRODUCTION_LOCAL_LLM_URL = "http://127.0.0.1:YOUR_PORT/v1"
+    $env:PRODUCTION_LOCAL_LLM_MODEL = "YOUR_LOCAL_MODEL_ID"
+    $env:PRODUCTION_LOCAL_LLM_OFFLINE_CONFIRMED = "1"
+    python hybrid_compute.py narration "Sujet de la vidéo" --output narration.txt
+
+This adapter checks the model catalog and requests short narration without automatic fallback. The Flyx-specific runtime and performance are not yet validated. Review the script before using it.
+
+### Limits of this increment
+
+No automatic Kaggle/WanGP submission, no model download, no scene generation from a topic inside the hybrid pipeline, no Remotion timeline integration, no automatic night runner yet. Video Factory still handles scene generation separately. The local hybrid assembler is serial across processes. Remote generation authorization is rechecked immediately before dispatch. API free-model allowlists are operator confirmations, not real-time billing guarantees.
+
+
+## Scene Director — automated short video missions
+
+Start the existing app.py server and open AI Video Factory. Select a verified free provider/model and 9:16 or 16:9. In Scene Director enter the subject, optionally a French narration, clip duration and maximum number of clips. A configured offline local OpenAI-compatible LLM remains required for storyboard generation (and narration if omitted). The default downloaded faster-whisper model directory is ~/AI-Models/faster-whisper-small; an explicit PRODUCTION_WHISPER_MODEL_DIR overrides it.
+
+The director generates the voice once, measures its real duration, calculates the scene count (bounded by the user-selected maximum), generates distinct JSON storyboard prompts, submits them atomically to the existing media queue, waits for completed clips, then assembles and validates the MP4. The narration checkpoint is transferred to the hybrid assembler. Mission manifests in outputs/directed_video and stable scene IDs protect against duplicate queue insertion across restarts. One director mission is processed at a time while app.py runs. This is an initial persistent worker, not a full scheduled Night Runner.
+
+Failed/interrupted remote jobs are not retried automatically. To recover, retry the failed scene explicitly in Video Factory, wait for the replacement MP4 to finish, attach its ID using Replace scene, and resume. A retry may duplicate work already accepted remotely. No provider fallback or publication is automatic. Use one app.py server instance. The final MP4 awaits visual and editorial review. No model license or current pricing is inferred from the provider name.
+
+Configuration of an offline LLM, current provider allowlists, voice and actual provider generation still need local verification. Kaggle/WanGP submission and a scheduled night runner remain future work.

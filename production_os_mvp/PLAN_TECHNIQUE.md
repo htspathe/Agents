@@ -135,3 +135,57 @@ Les postes pouvant coûter de l'argent ultérieurement : comptes de plateformes,
 ## 7. Décision immédiate après le test du MVP
 
 Une fois que le dashboard et un vrai clip de démonstration tournent, la prochaine implémentation technique à ouvrir est **Whisper + OpenShorts + Remotion**. C'est l'enchaînement avec la meilleure réutilisation d'outils déjà connus et le moyen le plus concret de passer d'un découpage manuel à un agent de clipping intelligent.
+
+
+## 9. V0.7 — Orchestration des agents et skills locaux
+
+### Registres locaux
+- runtime_registry.py découvre les CLI connus (Codex, OpenCode, DSH, Pi, Claude Code, FCC, Agent Desktop) et les outils de production (FFmpeg, FFprobe, Node, Docker, Rojo, Blender, Whisper, Ollama).
+- skill_registry.py indexe les SKILL.md dans les dossiers utilisateurs des harnesses, déduplique les copies et conserve les chemins d'origine. Aucun contenu de skill n'est copié dans le dépôt.
+- mcp_registry.py lit uniquement les noms et métadonnées non sensibles des serveurs MCP dans les configurations prises en charge. Une déclaration configurée n'est pas une preuve de connexion ou de disponibilité.
+
+### Sélection et exécution
+- agent_orchestrator.py associe les skills pertinents aux rôles natifs et prépare un plan sans démarrer les agents externes.
+- engine.py persiste le manifeste agent_skill_plan.json pour chaque mission et charge les instructions sélectionnées dans un contexte borné.
+- agents.py transmet le contexte de skills au routeur de texte et au handoff Stickman. Les autres rôles natifs conservent leurs handlers Python tant qu'un adaptateur dédié n'a pas été validé.
+- Les CLI Codex, Antigravity et OpenCode réutilisent les adaptateurs de texte existants ; Ollama reste le moteur local. Claude, Pi, DSH et FCC sont détectés sans exécution automatique ; leurs flags, modes non interactifs, permissions et politiques de coûts doivent être validés avant activation.
+- L'inventaire n'exécute jamais un fichier SKILL.md. Le texte sélectionné est une référence non fiable et ne peut pas autoriser des commandes, l'accès aux secrets, des actions externes ou des dépenses.
+- Le dashboard expose l'inventaire et le planificateur via les endpoints locaux authentifiés /api/agents/registry et /api/agents/plan.
+
+### Critères de réception
+1. Les skills présents dans plusieurs répertoires sont affichés une seule fois, avec leurs sources.
+2. Les serveurs MCP affichent une déclaration sans révéler les arguments, variables d'environnement, jetons ou URL complètes.
+3. Chaque workflow produit un plan avec les rôles, skills sélectionnés et modes d'exécution.
+4. Une mission conserve agent_skill_plan.json et transmet les références sélectionnées aux handlers compatibles.
+5. Aucun runtime externe non vérifié n'est exécuté ; aucun appel payant ou publication n'est déclenché.
+6. Les tests unitaires V0.7 passent sous Windows avec python -m unittest discover -s tests -v.
+
+
+## 10. V0.8 — AI Video Factory, mode Free Only
+
+### Fournisseurs
+- FreeLLMAPI : POST /v1/videos/generations ; requête synchrone, réponse MP4 binaire, délai maximal client 310 secondes. L'identité locale est contrôlée via GET /v1/models.
+- Agnes AI : POST /v1/videos, récupération de video_id, polling GET /agnesapi puis téléchargement HTTPS du MP4.
+- Les deux fournisseurs sont indépendants ; aucun fallback automatique ne bascule d'un fournisseur à l'autre.
+
+### Cost Guardian
+- FreeLLMAPI : seuls les modèles de FREELLMAPI_FREE_VIDEO_MODELS sont autorisés. Le modèle auto nécessite FREELLMAPI_VIDEO_AUTO_FREE_CONFIRMED=1.
+- Agnes : seuls les modèles de AGNES_FREE_VIDEO_MODELS sont autorisés si AGNES_VIDEO_FREE_CONFIRMED=1.
+- L'allowlist est une attestation locale de l'opérateur, pas une vérification de facturation par le code. Un modèle absent de l'allowlist est bloqué.
+- Agnes Video 2.5 (modèle de base) est bloqué en Free Only car le tarif publié est payant ; Agnes Video 2.5 Flash n'est qu'une promotion temporaire à 0 $/s selon le catalogue public et doit être revalidé dans la console avant activation.
+- Les clés sont chargées depuis l'environnement ou .env.local ; aucune clé n'est retournée par l'API ou écrite dans les manifests.
+- Si un job est en cours lors d'un arrêt, il devient interrupted et nécessite une relance manuelle pour éviter une double génération ou une double facturation.
+
+### File et médias
+- SQLite persiste les tâches et leur état ; un worker local traite une tâche à la fois.
+- Les références image PNG/JPG/WebP sont contrôlées par signature et limitées à 12 Mo.
+- Les MP4 sont limités à 200 Mo, contrôlés par signature et inspectés avec FFprobe si disponible.
+- Les tâches terminées sont exportées dans outputs/video_factory ; les références et la base restent locales et ignorées par Git.
+- La reprise d'un job crée une nouvelle tâche explicite ; aucune répétition automatique de requête POST fournisseur.
+
+### Réception
+1. Sans clé, sans endpoint identifié ou sans allowlist gratuite, le bouton de génération reste désactivé et l'API refuse le job.
+2. Le dashboard permet de créer 1 à 10 variantes, suivre la file, relancer une erreur manuellement et télécharger le MP4.
+3. Le serveur local charge les secrets depuis .env.local sans les exposer.
+4. Les tests vérifient le blocage des modèles non autorisés, l'attestation du modèle auto, la persistance de la file, la validation d'image et la réception du MP4 binaire.
+5. Les coûts et quotas réels doivent être confirmés dans chaque compte fournisseur ; le code ne déduit jamais la gratuité à partir du nom du modèle.
